@@ -1,0 +1,48 @@
+import React, { useEffect, useState } from "react";
+import { db } from "./firebase";
+import { collection, getDocs, addDoc, query, orderBy, limit } from "firebase/firestore";
+
+const BillNumber: React.FC = () => {
+  const [billNumber, setBillNumber] = useState("");
+
+  useEffect(() => {
+    const generateBillNumber = async () => {
+      const billsRef = collection(db, "bills");
+      const q = query(billsRef, orderBy("createdAt", "desc"), limit(1));
+      const querySnapshot = await getDocs(q);
+
+      let newBillNumber;
+      if (!querySnapshot.empty) {
+        const lastBill = querySnapshot.docs[0].data();
+        const lastNumber = parseInt(lastBill.billNumber.split("-")[2], 10);
+        newBillNumber = `2024-${Math.floor(10 + Math.random() * 90)}-${lastNumber + 1}`;
+      } else {
+        newBillNumber = `2024-${Math.floor(10 + Math.random() * 90)}-1`;
+      }
+
+      setBillNumber(newBillNumber);
+    };
+
+    generateBillNumber();
+  }, []);
+
+  const handleSaveBill = async () => {
+    await addDoc(collection(db, "bills"), {
+      billNumber: billNumber,
+      createdAt: new Date()
+    });
+    alert("Bill saved!");
+  };
+
+  return (
+    <div className="col-md-6">
+      <label className="form-label">Bill Number</label>
+      <input type="text" value={billNumber} readOnly className="form-control" />
+      <button onClick={handleSaveBill} className="btn btn-primary mt-2">
+        Save Bill
+      </button>
+    </div>
+  );
+};
+
+export default BillNumber;

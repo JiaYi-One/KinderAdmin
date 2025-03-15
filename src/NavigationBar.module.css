@@ -1,0 +1,17 @@
+/* NavigationBar.module.css */
+.active {
+    font-weight: bold;
+    color: black;
+  }
+  
+  .inactive {
+    color: black; /* Default black color for inactive links */
+  }
+  
+  .me3 {
+    margin-right: 1rem;
+  }
+  
+  .textDecorationNone {
+    text-decoration: none;
+  }
