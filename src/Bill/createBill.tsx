@@ -19,8 +19,8 @@ import {
 
 interface Student {
   class_id: string;
-  id: any;
-  name: any;
+  id: string;
+  name: string;
   studentName: string;
   studentId: string;
   birthDate: string;
@@ -30,6 +30,15 @@ interface Student {
   parentName: string;
   parentPhone: string;
   parentEmail: string;
+}
+interface Bill {
+  studentName: string;
+  studentId: string;
+  items: BillItem[];
+  totalAmount: number;
+  billDate: string;
+  reference: string;
+  billNumber: string;
 }
 
 interface BillItem {
@@ -245,7 +254,7 @@ function CreateBill() {
       }
 
       // Group students by parent ID to avoid duplicate notifications
-      const parentBills: { [parentId: string]: any[] } = {};
+      const parentBills: { [parentId: string]: Bill[] } = {};
 
       // Create bills and group them by parent
       for (const studentId of selectedStudentIds) {
@@ -255,13 +264,12 @@ function CreateBill() {
         // Create bill document
         const billDocRef = doc(collection(db, "bills"));
         const billData = {
-          billId: billDocRef.id,
           billNumber: formData.billNumber,
           billDate: formData.billDate,
           reference: formData.reference,
           items: items,
           totalAmount: total,
-          status: "pending",
+          paymenyStatus: "unpaid",
           createdAt: new Date(),
           studentId: student.id,
           studentName: student.name,
@@ -269,7 +277,6 @@ function CreateBill() {
           parentId: student.parentId,
           parentName: student.parentName,
           parentEmail: student.parentEmail,
-          isRead: false,
         };
 
         await setDoc(billDocRef, billData);
@@ -290,18 +297,16 @@ function CreateBill() {
           type: "new_bill",
           isRead: false,
           billCount: bills.length,
-          totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
-          message: `You have ${bills.length} new bill${
-            bills.length > 1 ? "s" : ""
-          } to review`,
+          totalAmount: bills.reduce((sum: number, bill) => sum + bill.totalAmount, 0), // ✅ Fixed
+          message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
           bills: bills.map((bill) => ({
-            billId: bill.billId,
             billNumber: bill.billNumber,
             amount: bill.totalAmount,
             studentName: bill.studentName,
           })),
         });
       }
+      
 
       alert("Bills created and notifications sent successfully!");
 

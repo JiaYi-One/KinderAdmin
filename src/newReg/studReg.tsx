@@ -1,8 +1,8 @@
 import React, { ChangeEvent, useState } from "react";
-import { Save, UserPlus, School, Receipt } from "lucide-react";
+import { Save, UserPlus, Receipt } from "lucide-react";
 import { db } from "../firebase";
 //import { collection, addDoc } from "firebase/firestore";
-import { getFirestore, collection, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc } from "firebase/firestore";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -28,7 +28,7 @@ function generateStudentId(): string {
   return `${year}K${random}`;
 }
 
-function studReg() {
+function StudReg() {
   const [formData, setFormData] = useState<StudentForm>(() => {
     const studId = generateStudentId();
     return {
@@ -79,8 +79,7 @@ function studReg() {
       }));
     }
   };
-
-  const classArray = ["3Y", "4Y", "5Y", "6Y"];
+  const classArray = ["3Y", "4Y", "5Y", "6Y"]; // Class options
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +89,7 @@ function studReg() {
       // Create student document in students collection
       const studentDocRef = doc(
         collection(db, "students"),
-        formData.studentName
+        formData.studentId
       );
       await setDoc(studentDocRef, {
         name: formData.studentName,
@@ -119,7 +118,7 @@ function studReg() {
       });
 
       // Create parent document
-      const parentDocRef = doc(collection(db, "parents"), formData.studentName);
+      const parentDocRef = doc(collection(db, "parents"), formData.parentId);
       await setDoc(
         parentDocRef,
         {
@@ -392,4 +391,4 @@ function studReg() {
   );
 }
 
-export default studReg;
+export default StudReg;
