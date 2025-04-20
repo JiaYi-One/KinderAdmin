@@ -7,6 +7,7 @@ import {
   Users,
   Search,
   CheckCircle2,
+  Calendar,
 } from "lucide-react";
 import { db } from "../firebase";
 import {
@@ -37,6 +38,8 @@ interface Bill {
   items: BillItem[];
   totalAmount: number;
   billDate: string;
+  dueDate: string;
+  duePeriod: number;
   reference: string;
   billNumber: string;
 }
@@ -49,6 +52,8 @@ interface BillItem {
 
 interface FormData {
   billDate: string;
+  duePeriod: number;
+  dueDate: string;
   reference: string;
   billNumber: string;
 }
@@ -66,12 +71,21 @@ function CreateBill() {
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
+    duePeriod: 14, // Default to 14 days
+    dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
     reference: "",
     billNumber: `${new Date().getFullYear()}-${Math.floor(
       Math.random() * 100
     )}-${Math.floor(Math.random() * 100)}`,
   });
   const [, setIsSubmitting] = useState(false);
+
+  // Function to calculate due date based on bill date and due period
+  function calculateDueDate(billDate: string, duePeriod: number): string {
+    const date = new Date(billDate);
+    date.setDate(date.getDate() + duePeriod);
+    return date.toISOString().split("T")[0];
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -233,9 +247,24 @@ function CreateBill() {
     );
   };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFormChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    // Update the form data
+    setFormData((prev) => {
+      const newFormData = { ...prev, [name]: value };
+      
+      // If bill date or due period changes, recalculate the due date
+      if (name === "billDate" || name === "duePeriod") {
+        const duePeriod = name === "duePeriod" ? Number(value) : prev.duePeriod;
+        const billDate = name === "billDate" ? value : prev.billDate;
+        newFormData.dueDate = calculateDueDate(billDate, duePeriod);
+      }
+      
+      return newFormData;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -266,10 +295,12 @@ function CreateBill() {
         const billData = {
           billNumber: formData.billNumber,
           billDate: formData.billDate,
+          duePeriod: formData.duePeriod,
+          dueDate: formData.dueDate,
           reference: formData.reference,
           items: items,
           totalAmount: total,
-          paymenyStatus: "unpaid",
+          paymentStatus: "unpaid",
           createdAt: new Date(),
           studentId: student.id,
           studentName: student.name,
@@ -297,22 +328,24 @@ function CreateBill() {
           type: "new_bill",
           isRead: false,
           billCount: bills.length,
-          totalAmount: bills.reduce((sum: number, bill) => sum + bill.totalAmount, 0), // ✅ Fixed
+          totalAmount: bills.reduce((sum: number, bill) => sum + bill.totalAmount, 0),
           message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
           bills: bills.map((bill) => ({
             billNumber: bill.billNumber,
             amount: bill.totalAmount,
             studentName: bill.studentName,
+            dueDate: bill.dueDate,
           })),
         });
       }
       
-
       alert("Bills created and notifications sent successfully!");
 
       // Reset form
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
+        duePeriod: 14,
+        dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
         reference: "",
         billNumber: `${new Date().getFullYear()}-${Math.floor(
           Math.random() * 100
@@ -329,11 +362,6 @@ function CreateBill() {
   };
 
   const total = items.reduce((sum, item) => sum + item.amount, 0);
-
-  // Add this function to create a class
-
-  // Call it to create 4Y if needed
-  // createClass("4Y");
 
   if (loading) {
     return (
@@ -450,7 +478,7 @@ function CreateBill() {
               <div className="card-body">
                 {/* Bill Info */}
                 <div className="row mb-4">
-                  <div className="col-md-4">
+                  <div className="col-md-3">
                     <label className="form-label">Bill Date</label>
                     <input
                       type="date"
@@ -460,7 +488,48 @@ function CreateBill() {
                       className="form-control"
                     />
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-3">
+                    <label className="form-label">Payment Term</label>
+                    <select
+                      name="duePeriod"
+                      value={formData.duePeriod}
+                      onChange={handleFormChange}
+                      className="form-select"
+                    >
+                      <option value="7">7 days</option>
+                      <option value="14">14 days</option>
+                      <option value="30">30 days</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Due Date</label>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light">
+                        <Calendar size={16} />
+                      </span>
+                      <input
+                        type="date"
+                        name="dueDate"
+                        value={formData.dueDate}
+                        className="form-control bg-light"
+                        readOnly
+                      />
+                    </div>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Bill Number</label>
+                    <input
+                      type="text"
+                      name="billNumber"
+                      value={formData.billNumber}
+                      className="form-control bg-light"
+                      readOnly
+                    />
+                  </div>
+                </div>
+
+                <div className="row mb-4">
+                  <div className="col-md-6">
                     <label className="form-label">Reference</label>
                     <input
                       type="text"
@@ -469,16 +538,6 @@ function CreateBill() {
                       onChange={handleFormChange}
                       placeholder="Enter reference"
                       className="form-control"
-                    />
-                  </div>
-                  <div className="col-md-4">
-                    <label className="form-label">Bill Number</label>
-                    <input
-                      type="text"
-                      name="billNumber"
-                      value={formData.billNumber}
-                      className="form-control bg-light"
-                      readOnly
                     />
                   </div>
                 </div>
@@ -562,7 +621,7 @@ function CreateBill() {
                         <span className="fw-bold me-4">Total Amount:</span>
                         <span className="fs-4 fw-bold text-danger">
                           RM {total.toFixed(2)}
-                        </span>
+                         </span>
                       </div>
                     </div>
                   </div>
