@@ -640,7 +640,7 @@ function CreateBill() {
                       !items.some((item) => item.amount > 0)
                     }
                   >
-                    <Save size={16} />
+                    <Save className="w-4 h-4 me-2" size={16} />
                     Save Bill
                   </button>
                 </div>

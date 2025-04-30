@@ -169,7 +169,7 @@ function StudReg() {
                 Fill in the student's information below
               </p>
             </div>
-            <UserPlus className="w-8 h-8 text-danger" />{" "}
+            <UserPlus className="w-8 h-8 text-primary" />{" "}
             {/* Lucide icon with Bootstrap color */}
           </div>
 
@@ -369,7 +369,7 @@ function StudReg() {
               </button>
               <button
                 type="submit"
-                className="btn btn-danger"
+                className="btn btn-primary"
                 disabled={isSubmitting}
               >
                 <Save className="w-4 h-4 me-2" />
