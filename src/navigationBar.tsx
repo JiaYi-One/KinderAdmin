@@ -1,5 +1,4 @@
 // NavigationBar.tsx
-import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 import styles from "./NavigationBar.module.css";
@@ -8,7 +7,7 @@ const NavigationBar = () => {
   const location = useLocation();
 
   return (
-    <header className="d-flex justify-content-between align-items-center mb-4 p-3 bg-light">
+    <header className="d-flex justify-content-between align-items-center p-3 bg-light">
       <h1 className="fw-bold">KinderCare</h1>
       <nav>
         <Link
@@ -44,12 +43,12 @@ const NavigationBar = () => {
           Classes
         </Link>
         <Link
-          to="/reports"
+          to="/chat/chat_list"
           className={`${styles.textDecorationNone} ${
-            location.pathname === "/reports" ? styles.active : styles.inactive
+            location.pathname === "/chat/chat_list" ? styles.active : styles.inactive
           }`}
         >
-          Reports
+          Chat
         </Link>
       </nav>
     </header>
