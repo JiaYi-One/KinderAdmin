@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { Search } from "lucide-react"
 import { collection, getDocs } from "firebase/firestore"
 import { db } from "../firebase"
+import { ChatService, Chat as ChatType } from "./chat_service"
 
 type Chat = {
   id: string
@@ -22,38 +23,44 @@ export function ChatList() {
   const [showNewChat, setShowNewChat] = useState(false)
 
   useEffect(() => {
-    // Mock data for now - can be replaced with API call later
-    setChats([
-      {
-        id: "1",
-        name: "Mrs. Johnson",
-        lastMessage: "How is Alex doing with the math homework?",
-        time: "10:30 AM",
-        unread: 2,
-      },
-      {
-        id: "2",
-        name: "Mr. Smith",
-        lastMessage: "The science project is due next Friday.",
-        time: "Yesterday",
-        unread: 0,
-      },
-      {
-        id: "3",
-        name: "Mrs. Garcia",
-        lastMessage: "Thank you for attending the parent-teacher conference.",
-        time: "2 days ago",
-        unread: 0,
-      },
-      {
-        id: "4",
-        name: "Mr. Wilson",
-        lastMessage: "Emma has been doing great in PE class!",
-        time: "3 days ago",
-        unread: 0,
-      },
-    ])
+    // Subscribe to real-time chat updates
+    const unsubscribe = ChatService.subscribeToChats((updatedChats: ChatType[]) => {
+      setChats(updatedChats.map((chat: ChatType) => ({
+        id: chat.id,
+        name: `${chat.studentName} (${chat.parentName})`,
+        lastMessage: chat.lastMessage,
+        time: chat.lastMessageTime ? formatTime(chat.lastMessageTime) : '',
+        unread: chat.unread || 0
+      })));
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, [])
+
+  const formatTime = (date: Date) => {
+    const now = new Date();
+    const messageDate = new Date(date);
+    
+    // Reset time part for date comparison
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const messageDay = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+    
+    // Calculate difference in days
+    const diffTime = today.getTime() - messageDay.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      // Today - show time
+      return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return messageDate.toLocaleDateString();
+    }
+  };
 
   const handleChatClick = (chatId: string) => {
     navigate(`/chat/${chatId}`, { replace: true })
@@ -159,6 +166,7 @@ export function NewChatSelector({
     parentName: string;
     parentId: string;
   }[]>([]);
+  const [existingChats, setExistingChats] = useState<ChatType[]>([]);
 
   useEffect(() => {
     async function fetchClasses() {
@@ -166,6 +174,14 @@ export function NewChatSelector({
       setClasses(classSnap.docs.map((doc) => doc.id));
     }
     fetchClasses();
+  }, []);
+
+  useEffect(() => {
+    // Subscribe to existing chats to check for duplicates
+    const unsubscribe = ChatService.subscribeToChats((chats) => {
+      setExistingChats(chats);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -183,6 +199,27 @@ export function NewChatSelector({
     }
     fetchStudents();
   }, [selectedClass]);
+
+  const handleStartChat = async (parentId: string, studentName: string, parentName: string) => {
+    try {
+      // Check if a chat already exists for this student
+      const existingChat = existingChats.find(
+        chat => chat.parentId === parentId && chat.studentName === studentName
+      );
+
+      if (existingChat) {
+        // If chat exists, navigate to it
+        onStartChat(existingChat.id, studentName, parentName);
+      } else {
+        // If no chat exists, create a new one
+        const chatId = await ChatService.createChat(parentId, studentName, parentName);
+        onStartChat(chatId, studentName, parentName);
+      }
+    } catch (error) {
+      console.error("Error handling chat:", error);
+      // You might want to show an error message to the user here
+    }
+  };
 
   return (
     <div>
@@ -219,7 +256,7 @@ export function NewChatSelector({
               <button
                 key={student.id}
                 className="btn btn-outline-secondary text-start"
-                onClick={() => onStartChat(student.parentId, student.name, student.parentName)}
+                onClick={() => handleStartChat(student.parentId, student.name, student.parentName)}
               >
                 {student.name} ({student.parentName})
               </button>
