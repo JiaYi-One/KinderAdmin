@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react"
-import { useParams, useLocation } from "react-router-dom"
+import { useParams } from "react-router-dom"
 import { ChatService, Message } from "./chat_service"
 
 export function ChatDetail() {
   const { id } = useParams()
-  const location = useLocation();
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [chatInfo, setChatInfo] = useState({
@@ -52,7 +51,7 @@ export function ChatDetail() {
     try {
       await ChatService.sendMessage(id, {
         content: newMessage,
-        sender: "You", // You might want to get this from your auth context
+        sender: "ADMIN",
         studentName: chatInfo.studentName,
         parentName: chatInfo.parentName,
       })
@@ -90,27 +89,46 @@ export function ChatDetail() {
       {/* Scrollable messages area */}
       <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white">
         {messages.length > 0 ? (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`d-flex mb-3 ${message.sender === "You" ? 'justify-content-end' : 'justify-content-start'}`}
-            >
+          messages.map((message) => {
+            const isAdmin = message.sender === "ADMIN";
+            return (
               <div
-                className={`p-3 rounded-3 ${message.sender === "You" ? 'bg-primary text-white' : 'bg-light'}`}
-                style={{ maxWidth: '70%' }}
+                key={message.id}
+                className={`d-flex mb-3 ${isAdmin ? 'justify-content-end' : 'justify-content-start'}`}
               >
-                <div className="d-flex align-items-center mb-1">
-                  <small className={message.sender === "You" ? 'text-white-50' : 'text-muted'}>
-                    {message.sender}
-                  </small>
-                  <small className={`ms-2 ${message.sender === "You" ? 'text-white-50' : 'text-muted'}`}>
+                {!isAdmin && (
+                  <div className="me-2">
+                    <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                      <span className="text-white">{message.sender[0]}</span>
+                    </div>
+                  </div>
+                )}
+                <div
+                  className={`p-3 rounded-3 ${isAdmin ? 'bg-primary text-white' : 'bg-light'}`}
+                  style={{ maxWidth: '70%' }}
+                >
+                  {!isAdmin && (
+                    <div className="d-flex align-items-center mb-1">
+                      <small className="text-muted">
+                        {message.studentName} ({message.parentName})
+                      </small>
+                    </div>
+                  )}
+                  <p className="mb-0">{message.content}</p>
+                  <small className={`mt-1 d-block ${isAdmin ? 'text-white-50' : 'text-muted'}`}>
                     {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </small>
                 </div>
-                <p className="mb-0">{message.content}</p>
+                {isAdmin && (
+                  <div className="ms-2">
+                    <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                      <span className="text-white">A</span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
             <p>No messages yet. Start the conversation!</p>

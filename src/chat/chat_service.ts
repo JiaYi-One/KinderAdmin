@@ -1,4 +1,4 @@
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export type Message = {
@@ -25,7 +25,15 @@ export type Chat = {
 
 export class ChatService {
     // Create a new chat message
-    static async sendMessage(chatId: string, message: Omit<Message, 'id' | 'timestamp'>) {
+    static async sendMessage(
+        chatId: string,
+        message: {
+            content: string;
+            sender: string;
+            studentName: string;
+            parentName: string;
+        }
+    ) {
         try {
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
@@ -77,6 +85,7 @@ export class ChatService {
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: 'System',
+                unread: 0
             });
             return chatDoc.id;
         } catch (error) {
@@ -103,11 +112,54 @@ export class ChatService {
                     lastMessage: data.lastMessage,
                     lastMessageTime: data.lastMessageTime?.toDate(),
                     lastMessageSender: data.lastMessageSender,
-                    unread: data.unread,
+                    unread: data.unread || 0,
                     image: data.image,
                 });
             });
             callback(chats);
         });
+    }
+
+    // Get chats by parent ID (for mobile app compatibility)
+    static subscribeToParentChats(parentId: string, callback: (chats: Chat[]) => void) {
+        const chatsRef = collection(db, 'chats');
+        const q = query(
+            chatsRef,
+            where('parentId', '==', parentId),
+            orderBy('lastMessageTime', 'desc')
+        );
+
+        return onSnapshot(q, (snapshot) => {
+            const chats: Chat[] = [];
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                chats.push({
+                    id: doc.id,
+                    parentId: data.parentId,
+                    studentName: data.studentName,
+                    parentName: data.parentName,
+                    createdAt: data.createdAt?.toDate(),
+                    lastMessage: data.lastMessage,
+                    lastMessageTime: data.lastMessageTime?.toDate(),
+                    lastMessageSender: data.lastMessageSender,
+                    unread: data.unread || 0,
+                    image: data.image,
+                });
+            });
+            callback(chats);
+        });
+    }
+
+    // Update unread count
+    static async updateUnreadCount(chatId: string, increment: boolean = true) {
+        try {
+            const chatDocRef = doc(db, 'chats', chatId);
+            await updateDoc(chatDocRef, {
+                unread: increment ? increment : 0
+            });
+        } catch (error) {
+            console.error('Error updating unread count:', error);
+            throw error;
+        }
     }
 } 
