@@ -72,7 +72,7 @@ export function ChatList() {
     <div className="border-end d-flex flex-column position-relative" style={{ width: '350px', height: '100%' }}>
       <div className="p-3 border-bottom bg-white">
         <div className="position-relative">
-          <Search className="position-absolute top-40 start-0 translate-middle-y ms-3 text-muted" style={{ width: '16px', height: '16px' }} />
+          <Search className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" style={{ width: '16px', height: '16px' }} />
           <input
             type="text"
             className="form-control ps-5"
