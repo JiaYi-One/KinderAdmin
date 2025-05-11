@@ -8,6 +8,7 @@ export type Message = {
     timestamp: Timestamp;
     studentName?: string;
     parentName?: string;
+    webUser?: string;
 };
 
 export type Chat = {
@@ -21,9 +22,12 @@ export type Chat = {
     lastMessageSender: string;
     unread?: number;
     image?: string;
+    webUser: string;
 };
 
 export class ChatService {
+    static readonly webUser = 'hrh'; // Hardcoded web user role
+
     // Create a new chat message
     static async sendMessage(
         chatId: string,
@@ -32,12 +36,14 @@ export class ChatService {
             sender: string;
             studentName: string;
             parentName: string;
+            webUser: string;
         }
     ) {
         try {
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
                 ...message,
+                webUser: this.webUser, // Set web user as ADMIN
                 timestamp: serverTimestamp(),
             });
 
@@ -47,6 +53,7 @@ export class ChatService {
                 lastMessage: message.content,
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: message.sender,
+                webUser: this.webUser,
             });
 
             return messageDoc.id;
@@ -81,10 +88,11 @@ export class ChatService {
                 parentId,
                 studentName,
                 parentName,
+                webUser: this.webUser, // Set web user as ADMIN
                 createdAt: serverTimestamp(),
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
-                lastMessageSender: 'System',
+                lastMessageSender: parentName,
                 unread: 0
             });
             return chatDoc.id;
@@ -114,6 +122,7 @@ export class ChatService {
                     lastMessageSender: data.lastMessageSender,
                     unread: data.unread || 0,
                     image: data.image,
+                    webUser: data.webUser,
                 });
             });
             callback(chats);
@@ -144,6 +153,7 @@ export class ChatService {
                     lastMessageSender: data.lastMessageSender,
                     unread: data.unread || 0,
                     image: data.image,
+                    webUser: data.webUser,
                 });
             });
             callback(chats);
