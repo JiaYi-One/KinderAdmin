@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { ChatService, Message } from "./chat_service"
 
@@ -12,6 +12,11 @@ export function ChatDetail() {
     studentName: "",
     parentName: "",
   })
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
+  }
 
   useEffect(() => {
     if (!id) return
@@ -19,6 +24,8 @@ export function ChatDetail() {
     // Subscribe to messages for this chat
     const unsubscribe = ChatService.subscribeToMessages(id, (updatedMessages) => {
       setMessages(updatedMessages)
+      // Scroll to bottom instantly after messages are loaded
+      requestAnimationFrame(scrollToBottom)
     })
 
     // Cleanup subscription on unmount
@@ -54,8 +61,11 @@ export function ChatDetail() {
         sender: "ADMIN",
         studentName: chatInfo.studentName,
         parentName: chatInfo.parentName,
+        webUser: "ADMIN",
       })
       setNewMessage("")
+      // Scroll to bottom instantly after sending message
+      requestAnimationFrame(scrollToBottom)
     } catch (error) {
       console.error("Error sending message:", error)
       // You might want to show an error message to the user here
@@ -74,7 +84,7 @@ export function ChatDetail() {
   }
 
   return (
-    <div className="d-flex flex-column vh-100">
+    <div className="d-flex flex-column h-100 position-relative">
       {/* Header - fixed */}
       <div className="p-3 border-bottom bg-light d-flex align-items-center flex-shrink-0">
         <div>
@@ -87,48 +97,51 @@ export function ChatDetail() {
       </div>
 
       {/* Scrollable messages area */}
-      <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white">
+      <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white position-relative">
         {messages.length > 0 ? (
-          messages.map((message) => {
-            const isAdmin = message.sender === "ADMIN";
-            return (
-              <div
-                key={message.id}
-                className={`d-flex mb-3 ${isAdmin ? 'justify-content-end' : 'justify-content-start'}`}
-              >
-                {!isAdmin && (
-                  <div className="me-2">
-                    <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
-                      <span className="text-white">{message.sender[0]}</span>
-                    </div>
-                  </div>
-                )}
+          <>
+            {messages.map((message) => {
+              const isAdmin = message.sender === "ADMIN";
+              return (
                 <div
-                  className={`p-3 rounded-3 ${isAdmin ? 'bg-primary text-white' : 'bg-light'}`}
-                  style={{ maxWidth: '70%' }}
+                  key={message.id}
+                  className={`d-flex mb-3 ${isAdmin ? 'justify-content-end' : 'justify-content-start'}`}
                 >
                   {!isAdmin && (
-                    <div className="d-flex align-items-center mb-1">
-                      <small className="text-muted">
-                        {message.studentName} ({message.parentName})
-                      </small>
+                    <div className="me-2 flex-shrink-0">
+                      <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                        <span className="text-white">{message.sender[0]}</span>
+                      </div>
                     </div>
                   )}
-                  <p className="mb-0">{message.content}</p>
-                  <small className={`mt-1 d-block ${isAdmin ? 'text-white-50' : 'text-muted'}`}>
-                    {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </small>
-                </div>
-                {isAdmin && (
-                  <div className="ms-2">
-                    <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
-                      <span className="text-white">A</span>
-                    </div>
+                  <div
+                    className={`p-3 rounded-3 ${isAdmin ? 'bg-primary text-white' : 'bg-light'}`}
+                    style={{ maxWidth: '70%' }}
+                  >
+                    {!isAdmin && (
+                      <div className="d-flex align-items-center mb-1">
+                        <small className="text-muted">
+                          {message.studentName} ({message.parentName})
+                        </small>
+                      </div>
+                    )}
+                    <p className="mb-0">{message.content}</p>
+                    <small className={`mt-1 d-block ${isAdmin ? 'text-white-50' : 'text-muted'}`}>
+                      {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </small>
                   </div>
-                )}
-              </div>
-            );
-          })
+                  {isAdmin && (
+                    <div className="ms-2 flex-shrink-0">
+                      <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                        <span className="text-white">A</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </>
         ) : (
           <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
             <p>No messages yet. Start the conversation!</p>

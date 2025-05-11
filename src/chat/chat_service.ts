@@ -26,7 +26,7 @@ export type Chat = {
 };
 
 export class ChatService {
-    static readonly webUser = 'hrh'; // Hardcoded web user role
+    static readonly webUser = 'Admin'; // Hardcoded web user role
 
     // Create a new chat message
     static async sendMessage(

@@ -4,11 +4,10 @@ import { ChatDetail } from "./chat_detail"
 
 export function ChatLayout() {
   return (
-    <div className="d-flex" style={{ height: 'calc(100vh - 70px)' }}>
+    <div className="d-flex position-fixed w-100" style={{ height: 'calc(100vh - 70px)', top: '70px' }}>
       <ChatList />
-      <div className="flex-grow-1 d-flex flex-column" style={{ height: 'calc(100vh - 70px)' }}>
+      <div className="flex-grow-1 d-flex flex-column overflow-hidden" style={{ height: 'calc(100vh - 70px)' }}>
         <Routes>
-          
           <Route path=":id" element={<ChatDetail />} />
           <Route path="chat_list" element={
             <div className="d-flex flex-column align-items-center justify-content-center h-100 bg-light">

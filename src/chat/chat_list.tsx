@@ -69,8 +69,8 @@ export function ChatList() {
   const filteredChats = chats.filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
 
   return (
-    <div className="border-end d-flex flex-column h-100" style={{ width: '350px', height: '100vh', marginLeft: '1rem' }}>
-      <div className="p-3 border-bottom">
+    <div className="border-end d-flex flex-column position-relative" style={{ width: '350px', height: '100%' }}>
+      <div className="p-3 border-bottom bg-white">
         <div className="position-relative">
           <Search className="position-absolute top-50 start-0 translate-middle-y ms-3 text-muted" style={{ width: '16px', height: '16px' }} />
           <input
@@ -84,7 +84,7 @@ export function ChatList() {
         </div>
       </div>
 
-      <div className="flex-grow-1 overflow-auto" style={{ marginRight: '1rem' }}>
+      <div className="flex-grow-1 overflow-auto position-relative" style={{ marginRight: '1rem' }}>
         {showNewChat ? (
           <div className="p-3">
             <NewChatSelector
