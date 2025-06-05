@@ -50,6 +50,14 @@ const NavigationBar = () => {
         >
           Chat
         </Link>
+        <Link
+          to="/parent/parentList"
+          className={`${styles.textDecorationNone} ${
+            location.pathname === "/parent/parentList" ? styles.active : styles.inactive
+          }`}
+        >
+          Parent List
+        </Link>
       </nav>
     </header>
   );

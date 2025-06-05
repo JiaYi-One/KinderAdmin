@@ -1,9 +1,8 @@
 import React, { ChangeEvent, useState } from "react";
 import { Save, UserPlus, Receipt } from "lucide-react";
 import { db } from "../firebase";
-//import { collection, addDoc } from "firebase/firestore";
 import { collection, doc, setDoc } from "firebase/firestore";
-
+import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 interface StudentForm {
@@ -29,6 +28,7 @@ function generateStudentId(): string {
 }
 
 function StudReg() {
+  const auth = getAuth();
   const [formData, setFormData] = useState<StudentForm>(() => {
     const studId = generateStudentId();
     return {
@@ -86,6 +86,14 @@ function StudReg() {
     setIsSubmitting(true);
 
     try {
+      // Create parent authentication account
+      const defaultPassword = formData.parentId; // Using parent ID as default password
+      await createUserWithEmailAndPassword(
+        auth,
+        formData.parentEmail,
+        defaultPassword
+      );
+
       // Create student document in students collection
       const studentDocRef = doc(
         collection(db, "students"),
@@ -127,11 +135,12 @@ function StudReg() {
           email: formData.parentEmail,
           phone: formData.parentPhone,
           student_id: [formData.studentId],
+          role: "parent", // Add role for authorization
         },
         { merge: true }
       );
 
-      alert("Registration successful!");
+      alert(`Registration successful! Parent login created with:\nEmail: ${formData.parentEmail}\nDefault Password: ${defaultPassword}\n\nPlease change your password after first login.`);
 
       // Reset form with new IDs
       const newStudId = generateStudentId();
@@ -147,9 +156,13 @@ function StudReg() {
         parentPhone: "",
         parentEmail: "",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving data:", error);
-      alert("Error saving data. Please try again.");
+      if (error.code === 'auth/email-already-in-use') {
+        alert("This email is already registered. Please use a different email address.");
+      } else {
+        alert("Error saving data. Please try again.");
+      }
     } finally {
       setIsSubmitting(false);
     }
