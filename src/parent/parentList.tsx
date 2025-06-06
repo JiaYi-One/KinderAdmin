@@ -216,15 +216,12 @@ function ParentList() {
                 </thead>
                 <tbody>
                   {parentsByClass[selectedClass].map((parent) => (
-                    <tr key={parent.parentId}>
-                      <td>
-                        <button
-                          className="btn btn-link p-0 text-primary"
-                          onClick={() => handleParentClick(parent)}
-                        >
-                          {parent.parentId}
-                        </button>
-                      </td>
+                    <tr 
+                      key={parent.parentId}
+                      onClick={() => handleParentClick(parent)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td>{parent.parentId}</td>
                       <td>{parent.name}</td>
                       <td>
                         {parent.students

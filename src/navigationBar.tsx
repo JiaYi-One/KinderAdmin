@@ -2,62 +2,53 @@
 import { Link, useLocation } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 import styles from "./NavigationBar.module.css";
+import { FC } from "react";
 
-const NavigationBar = () => {
+interface NavLinkProps {
+  to: string;
+  children: React.ReactNode;
+  currentPath: string;
+}
+
+const NavLink: FC<NavLinkProps> = ({ to, children, currentPath }) => (
+  <Link
+    to={to}
+    className={`${styles.me3} ${styles.textDecorationNone} ${
+      currentPath === to ? styles.active : styles.inactive
+    }`}
+  >
+    {children}
+  </Link>
+);
+
+const NavigationBar: FC = () => {
   const location = useLocation();
 
   return (
     <header className="d-flex justify-content-between align-items-center p-3 bg-light">
       <h1 className="fw-bold">KinderCare</h1>
       <nav>
-        <Link
-          to="/"
-          className={`${styles.me3} ${styles.textDecorationNone} ${
-            location.pathname === "/" ? styles.active : styles.inactive // Inactive class
-          }`}
-        >
+        <NavLink to="/" currentPath={location.pathname}>
           Dashboard
-        </Link>
-        <Link
-          to="/newReg/studReg"
-          className={`${styles.me3} ${styles.textDecorationNone} ${
-            location.pathname === "/newReg/studReg" ? styles.active : styles.inactive
-          }`}
-        >
+        </NavLink>
+        <NavLink to="/newReg/studReg" currentPath={location.pathname}>
           Students
-        </Link>
-        <Link
-          to="/bill/createBill"
-          className={`${styles.me3} ${styles.textDecorationNone} ${
-            location.pathname === "/bill/createBill" ? styles.active : styles.inactive
-          }`}
-        >
+        </NavLink>
+        <NavLink to="/bill/createBill" currentPath={location.pathname}>
           Bills
-        </Link>
-        <Link
-          to="/classes"
-          className={`${styles.me3} ${styles.textDecorationNone} ${
-            location.pathname === "/classes" ? styles.active : styles.inactive
-          }`}
-        >
+        </NavLink>
+        <NavLink to="/classes" currentPath={location.pathname}>
           Classes
-        </Link>
-        <Link
-          to="/chat/chat_list"
-          className={`${styles.textDecorationNone} ${
-            location.pathname === "/chat/chat_list" ? styles.active : styles.inactive
-          }`}
-        >
+        </NavLink>
+        <NavLink to="/chat/chat_list" currentPath={location.pathname}>
           Chat
-        </Link>
-        <Link
-          to="/parent/parentList"
-          className={`${styles.textDecorationNone} ${
-            location.pathname === "/parent/parentList" ? styles.active : styles.inactive
-          }`}
-        >
+        </NavLink>
+        <NavLink to="/parent/parentList" currentPath={location.pathname}>
           Parent List
-        </Link>
+        </NavLink>
+        <NavLink to="/teachers/teachersList" currentPath={location.pathname}>
+          Teachers
+        </NavLink>
       </nav>
     </header>
   );
