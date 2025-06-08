@@ -156,9 +156,9 @@ function StudReg() {
         parentPhone: "",
         parentEmail: "",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error saving data:", error);
-      if (error.code === 'auth/email-already-in-use') {
+      if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
         alert("This email is already registered. Please use a different email address.");
       } else {
         alert("Error saving data. Please try again.");

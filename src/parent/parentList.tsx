@@ -162,6 +162,7 @@ function ParentList() {
 
   const handlePasswordChangeSuccess = () => {
     setShowChangePassword(false);
+    setShowParentDetails(false);
     alert("Password updated successfully!");
   };
 
@@ -392,6 +393,8 @@ function ParentList() {
           {/* Change Password Modal */}
           {showChangePassword && selectedParent && (
             <ChangePassword
+              userId={selectedParent.parentId}
+              userEmail={selectedParent.email}
               onSuccess={handlePasswordChangeSuccess}
               onCancel={() => setShowChangePassword(false)}
             />

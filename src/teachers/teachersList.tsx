@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
-import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, getDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, updatePassword } from "firebase/auth";
 import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
 
 interface SubjectClass {
   subject: string;
@@ -15,6 +17,7 @@ interface Teacher {
   teacherEmail: string;
   teacherPhone: string;
   subjectClasses: SubjectClass[];
+  role: 'teacher' | 'admin';
 }
 
 function TeachersList() {
@@ -27,28 +30,40 @@ function TeachersList() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [error, setError] = useState("");
   const [isAddMode, setIsAddMode] = useState(false);
+  const [showUserTypeModal, setShowUserTypeModal] = useState(false);
+  const [selectedUserType, setSelectedUserType] = useState<'teacher' | 'admin' | null>(null);
+  const [selectedRole, setSelectedRole] = useState<'teacher' | 'admin'>('teacher');
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const classArray = ["3Y", "4Y", "5Y", "6Y"];
   const subjectArray = ["English", "Mathematics", "Malay", "Chinese", "Science"];
 
-  useEffect(() => {
-    fetchTeachers();
-  }, []);
-
-  const fetchTeachers = async () => {
+  const fetchTeachers = useCallback(async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'teachers'));
-      const teachersData = querySnapshot.docs.map(doc => ({
+      setLoading(true);
+      const staffRef = collection(db, "staff");
+      const q = query(staffRef, where("role", "==", selectedRole));
+      const querySnapshot = await getDocs(q);
+      const staffList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      } as Teacher));
-      setTeachers(teachersData);
+      })) as Teacher[];
+      setTeachers(staffList);
     } catch (error) {
-      console.error('Error fetching teachers:', error);
+      console.error("Error fetching staff:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedRole]);
+
+  useEffect(() => {
+    fetchTeachers();
+  }, [fetchTeachers]);
 
   const handleTeacherClick = (teacher: Teacher) => {
     setSelectedTeacher(teacher);
@@ -62,6 +77,7 @@ function TeachersList() {
     setEditedTeacher(null);
     setIsEditing(false);
     setError("");
+    setSelectedUserType(null);
   };
 
   const handleEdit = () => {
@@ -99,6 +115,12 @@ function TeachersList() {
   };
 
   const handleAddTeacherClick = () => {
+    setShowUserTypeModal(true);
+  };
+
+  const handleUserTypeSelect = (type: 'teacher' | 'admin') => {
+    setSelectedUserType(type);
+    setShowUserTypeModal(false);
     setIsAddMode(true);
     setEditedTeacher({
       id: '',
@@ -106,61 +128,160 @@ function TeachersList() {
       teacherName: '',
       teacherEmail: '',
       teacherPhone: '',
-      subjectClasses: []
+      subjectClasses: [],
+      role: type
     });
     setShowTeacherDetails(true);
     setIsEditing(true);
   };
 
-  const handleSave = async () => {
-    if (!editedTeacher) return;
-    setSaveLoading(true);
-    setError("");
+  const createAuthAccount = async (email: string, staffId: string) => {
     try {
-      const teacherRef = doc(db, "teachers", editedTeacher.teacherName);
-      if (isAddMode) {
-        // Create new teacher
-        await setDoc(teacherRef, {
-          teacherID: editedTeacher.teacherID,
-          teacherName: editedTeacher.teacherName,
-          teacherEmail: editedTeacher.teacherEmail,
-          teacherPhone: editedTeacher.teacherPhone,
-          subjectClasses: editedTeacher.subjectClasses
-        });
-        setTeachers(prev => [...prev, { ...editedTeacher, id: editedTeacher.teacherName }]);
-      } else {
-        // Update existing teacher
-        await updateDoc(teacherRef, {
-          teacherID: editedTeacher.teacherID,
-          teacherName: editedTeacher.teacherName,
-          teacherEmail: editedTeacher.teacherEmail,
-          teacherPhone: editedTeacher.teacherPhone,
-          subjectClasses: editedTeacher.subjectClasses
-        });
-        setTeachers(prev => prev.map(teacher =>
-          teacher.id === editedTeacher.id ? { ...editedTeacher, id: editedTeacher.teacherName } : teacher
-        ));
+      // Ensure the password (staffId) is at least 6 characters
+      if (staffId.length < 6) {
+        throw new Error('Staff ID must be at least 6 characters long');
       }
-      setSelectedTeacher(editedTeacher);
-      setIsEditing(false);
-      setIsAddMode(false);
-      setShowTeacherDetails(false);
+
+      const auth = getAuth();
+      const userCredential = await createUserWithEmailAndPassword(auth, email, staffId);
+      return userCredential;
     } catch (error) {
-      console.error("Error saving teacher:", error);
-      setError("Failed to save teacher information");
+      if (error instanceof Error) {
+        if (error.message.includes('email-already-in-use')) {
+          throw new Error('This email is already registered. Please use a different email.');
+        }
+        throw error;
+      }
+      throw new Error('Failed to create account. Please try again.');
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaveLoading(true);
+      setError("");
+
+      // Validate required fields
+      if (!editedTeacher?.teacherName || !editedTeacher?.teacherEmail || !editedTeacher?.teacherPhone || !editedTeacher?.teacherID) {
+        setError("All fields are required");
+        return;
+      }
+
+      // Validate staff ID length
+      if (editedTeacher.teacherID.length < 6) {
+        setError("Staff ID must be at least 6 characters long");
+        return;
+      }
+
+      // For teachers, validate subject-class assignments
+      if (editedTeacher.role === 'teacher') {
+        const hasEmptyAssignments = editedTeacher.subjectClasses?.some(
+          sc => !sc.subject || !sc.class
+        );
+        if (hasEmptyAssignments) {
+          setError("Please select both subject and class for all assignments");
+          return;
+        }
+
+        // Check for duplicate assignments
+        const assignments = editedTeacher.subjectClasses || [];
+        const uniqueAssignments = new Set(assignments.map(sc => `${sc.subject}-${sc.class}`));
+        if (uniqueAssignments.size !== assignments.length) {
+          setError("Duplicate subject-class assignments are not allowed");
+          return;
+        }
+      }
+
+      const staffRef = doc(db, "staff", editedTeacher.teacherName);
+      
+      if (isAddMode) {
+        try {
+          // Create auth account using staff ID as password
+          const userCredential = await createAuthAccount(editedTeacher.teacherEmail, editedTeacher.teacherID);
+          const uid = userCredential.user.uid;
+
+          // Create staff document
+          const staffData = {
+            teacherID: editedTeacher.teacherID,
+            teacherName: editedTeacher.teacherName,
+            teacherEmail: editedTeacher.teacherEmail,
+            teacherPhone: editedTeacher.teacherPhone,
+            role: editedTeacher.role,
+            subjectClasses: editedTeacher.subjectClasses || [],
+            uid: uid,
+            createdAt: serverTimestamp()
+          };
+
+          console.log("Creating staff document with data:", staffData);
+          await setDoc(staffRef, staffData);
+          console.log("Staff document created successfully");
+
+          // Show credentials modal with staff ID as password
+          setGeneratedCredentials({
+            email: editedTeacher.teacherEmail,
+            password: editedTeacher.teacherID
+          });
+          setShowCredentials(true);
+        } catch (error) {
+          console.error("Error in add mode:", error);
+          if (error instanceof Error) {
+            setError(error.message);
+          } else {
+            setError("Failed to create staff account. Please try again.");
+          }
+          return;
+        }
+      } else {
+        try {
+          // Update existing staff
+          const updateData = {
+            teacherID: editedTeacher.teacherID,
+            teacherName: editedTeacher.teacherName,
+            teacherEmail: editedTeacher.teacherEmail,
+            teacherPhone: editedTeacher.teacherPhone,
+            role: editedTeacher.role,
+            subjectClasses: editedTeacher.subjectClasses || [],
+            updatedAt: serverTimestamp()
+          };
+
+          console.log("Updating staff document with data:", updateData);
+          await updateDoc(staffRef, updateData);
+          console.log("Staff document updated successfully");
+        } catch (error) {
+          console.error("Error in update mode:", error);
+          if (error instanceof Error) {
+            setError(error.message);
+          } else {
+            setError("Failed to update staff information. Please try again.");
+          }
+          return;
+        }
+      }
+
+      // Refresh the list
+      await fetchTeachers();
+      setShowTeacherDetails(false);
+      setShowCredentials(false);
+    } catch (error) {
+      console.error("Error in handleSave:", error);
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("Failed to save changes. Please try again.");
+      }
     } finally {
       setSaveLoading(false);
     }
   };
 
-  const handleDelete = async (teacherName: string) => {
-    if (window.confirm('Are you sure you want to delete this teacher?')) {
+  const handleDelete = async (teacher: Teacher) => {
+    if (window.confirm(`Are you sure you want to delete ${teacher.teacherName}?`)) {
       try {
-        await deleteDoc(doc(db, 'teachers', teacherName));
-        await fetchTeachers();
+        const staffRef = doc(db, "staff", teacher.teacherName);
+        await deleteDoc(staffRef);
+        fetchTeachers();
       } catch (error) {
-        console.error('Error deleting teacher:', error);
-        alert('Failed to delete teacher. Please try again.');
+        console.error("Error deleting staff:", error);
       }
     }
   };
@@ -196,6 +317,57 @@ function TeachersList() {
     });
   };
 
+  const handleUpdatePassword = async () => {
+    try {
+      setPasswordError("");
+      
+      if (!newPassword || !confirmPassword) {
+        setPasswordError("Please fill in all fields");
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        setPasswordError("Passwords do not match");
+        return;
+      }
+
+      if (newPassword.length < 6) {
+        setPasswordError("Password must be at least 6 characters long");
+        return;
+      }
+
+      const staffRef = doc(db, "staff", editedTeacher!.teacherName);
+      const staffDoc = await getDoc(staffRef);
+      
+      if (!staffDoc.exists()) {
+        setPasswordError("Staff not found");
+        return;
+      }
+
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) {
+        setPasswordError("No authenticated user found");
+        return;
+      }
+
+      await updatePassword(user, newPassword);
+      await updateDoc(staffRef, {
+        password: newPassword,
+        updatedAt: serverTimestamp()
+      });
+
+      setShowPasswordUpdate(false);
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordError("");
+    } catch (error) {
+      console.error("Error updating password:", error);
+      setPasswordError("Failed to update password. Please try again.");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-vh-100 bg-light p-4">
@@ -215,23 +387,69 @@ function TeachersList() {
       <div className="container">
         <div className="bg-white rounded shadow p-4">
           <div className="d-flex justify-content-between align-items-center mb-4">
-            <h2 className="h3 fw-bold m-0">Teachers List</h2>
-            <button className="btn btn-success" onClick={handleAddTeacherClick}>Add Teacher</button>
+            <div className="d-flex align-items-center gap-3">
+              <h2 className="h3 fw-bold m-0">Users List</h2>
+              <select 
+                className="form-select w-auto"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value as 'teacher' | 'admin')}
+              >
+                <option value="teacher">Teachers</option>
+                <option value="admin">Administrators</option>
+              </select>
+            </div>
+            <button className="btn btn-success" onClick={handleAddTeacherClick}>Add</button>
           </div>
 
-          {/* Teachers List */}
+          {/* User Type Selection Modal */}
+          {showUserTypeModal && (
+            <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Select User Type</h5>
+                    <button type="button" className="btn-close" onClick={() => setShowUserTypeModal(false)}></button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="d-grid gap-3">
+                      <button 
+                        className="btn btn-primary btn-lg"
+                        onClick={() => handleUserTypeSelect('teacher')}
+                      >
+                        Add New Teacher
+                      </button>
+                      <button 
+                        className="btn btn-secondary btn-lg"
+                        onClick={() => handleUserTypeSelect('admin')}
+                      >
+                        Add New Admin
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Users List */}
           <div className="table-responsive">
             <table className="table table-striped table-hover">
               <thead>
                 <tr>
-                  <th>Teacher ID</th>
+                  <th>{selectedRole === 'teacher' ? 'Teacher ID' : 'Admin ID'}</th>
                   <th>Name</th>
-                  <th>Subject & Classes</th>
+                  {selectedRole === 'teacher' ? (
+                    <th>Subject & Classes</th>
+                  ) : (
+                    <th>Phone</th>
+                  )}
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {teachers.map((teacher) => (
+                {teachers
+                  .filter(teacher => teacher.role === selectedRole)
+                  .map((teacher) => (
                   <tr 
                     key={teacher.id}
                     onClick={() => handleTeacherClick(teacher)}
@@ -239,19 +457,23 @@ function TeachersList() {
                   >
                     <td>{teacher.teacherID}</td>
                     <td>{teacher.teacherName}</td>
-                    <td>
-                      {teacher.subjectClasses?.map((sc, index) => (
-                        <div key={index}>
-                          {sc.subject} - Class {sc.class}
-                        </div>
-                      ))}
-                    </td>
+                    {selectedRole === 'teacher' ? (
+                      <td>
+                        {teacher.subjectClasses?.map((sc, index) => (
+                          <div key={index}>
+                            {sc.subject} - Class {sc.class}
+                          </div>
+                        ))}
+                      </td>
+                    ) : (
+                      <td>{teacher.teacherPhone}</td>
+                    )}
                     <td>
                       <button
                         className="btn btn-danger btn-sm me-2"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(teacher.id);
+                          handleDelete(teacher);
                         }}
                       >
                         Delete
@@ -261,6 +483,11 @@ function TeachersList() {
                 ))}
               </tbody>
             </table>
+            {teachers.filter(teacher => teacher.role === selectedRole).length === 0 && (
+              <div className="text-center text-muted py-4">
+                {selectedRole === 'teacher' ? 'No teachers registered.' : 'No administrators registered.'}
+              </div>
+            )}
           </div>
 
           {/* Teacher Details Modal */}
@@ -269,14 +496,18 @@ function TeachersList() {
               <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Teacher Details</h5>
+                    <h5 className="modal-title">
+                      {isAddMode 
+                        ? `Add New ${selectedUserType === 'admin' ? 'Admin' : 'Teacher'}`
+                        : `${editedTeacher?.role === 'admin' ? 'Admin' : 'Teacher'} Details`}
+                    </h5>
                     <button type="button" className="btn-close" onClick={handleCloseDetails}></button>
                   </div>
                   <div className="modal-body">
                     {error && <div className="alert alert-danger">{error}</div>}
                     
                     <div className="mb-3">
-                      <label className="form-label fw-bold">Teacher ID:</label>
+                      <label className="form-label fw-bold">ID:</label>
                       <input
                         type="text"
                         className="form-control bg-light"
@@ -312,6 +543,9 @@ function TeachersList() {
                         onChange={handleInputChange}
                         readOnly={!isEditing}
                       />
+                      {isAddMode && (
+                        <div className="form-text">This email will be used for login</div>
+                      )}
                     </div>
                     
                     <div className="mb-3">
@@ -325,59 +559,79 @@ function TeachersList() {
                         readOnly={!isEditing}
                       />
                     </div>
-                    
-                    <div className="mb-3">
-                      <label className="form-label">Subject & Class Assignments</label>
-                      {editedTeacher?.subjectClasses?.map((sc, index) => (
-                        <div key={index} className="row mb-2">
-                          <div className="col">
-                            <select
-                              className={`form-select${!isEditing ? ' bg-light' : ''}`}
-                              value={sc.subject}
-                              onChange={(e) => handleSubjectClassChange(index, 'subject', e.target.value)}
-                              disabled={!isEditing}
-                            >
-                              <option value="">Select Subject</option>
-                              {subjectArray.map(subject => (
-                                <option key={subject} value={subject}>{subject}</option>
-                              ))}
-                            </select>
+
+                    {/* Subject & Class Assignments (Teachers only) */}
+                    {editedTeacher?.role === 'teacher' && (
+                      <div className="mb-3">
+                        <label className="form-label">Subject & Class Assignments</label>
+                        {editedTeacher?.subjectClasses && editedTeacher.subjectClasses.length > 0 ? (
+                          editedTeacher.subjectClasses.map((sc, index) => (
+                            <div key={index} className="row mb-2">
+                              <div className="col">
+                                <select
+                                  className={`form-select${!isEditing ? ' bg-light' : ''}${!sc.subject && isEditing ? ' is-invalid' : ''}`}
+                                  value={sc.subject}
+                                  onChange={(e) => handleSubjectClassChange(index, 'subject', e.target.value)}
+                                  disabled={!isEditing}
+                                  required
+                                >
+                                  <option value="">Select Subject</option>
+                                  {subjectArray.map(subject => (
+                                    <option key={subject} value={subject}>{subject}</option>
+                                  ))}
+                                </select>
+                                {!sc.subject && isEditing && (
+                                  <div className="invalid-feedback">Please select a subject</div>
+                                )}
+                              </div>
+                              <div className="col">
+                                <select
+                                  className={`form-select${!isEditing ? ' bg-light' : ''}${!sc.class && isEditing ? ' is-invalid' : ''}`}
+                                  value={sc.class}
+                                  onChange={(e) => handleSubjectClassChange(index, 'class', e.target.value)}
+                                  disabled={!isEditing}
+                                  required
+                                >
+                                  <option value="">Select Class</option>
+                                  {classArray.map(className => (
+                                    <option key={className} value={className}>Class {className}</option>
+                                  ))}
+                                </select>
+                                {!sc.class && isEditing && (
+                                  <div className="invalid-feedback">Please select a class</div>
+                                )}
+                              </div>
+                              <div className="col-auto">
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  onClick={() => handleRemoveSubjectClass(index)}
+                                  disabled={!isEditing}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="border rounded p-3">
+                            <div className="text-center text-muted py-3">
+                              <i className="bi bi-info-circle me-2"></i>
+                              No classes or subjects assigned
+                            </div>
                           </div>
-                          <div className="col">
-                            <select
-                              className={`form-select${!isEditing ? ' bg-light' : ''}`}
-                              value={sc.class}
-                              onChange={(e) => handleSubjectClassChange(index, 'class', e.target.value)}
-                              disabled={!isEditing}
-                            >
-                              <option value="">Select Class</option>
-                              {classArray.map(className => (
-                                <option key={className} value={className}>Class {className}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="col-auto">
+                        )}
+                        {isEditing && (
+                          <div className="mt-2">
                             <button
-                              className="btn btn-danger btn-sm"
-                              onClick={() => handleRemoveSubjectClass(index)}
-                              disabled={!isEditing}
+                              className="btn btn-secondary btn-sm"
+                              onClick={handleAddSubjectClass}
                             >
-                              Remove
+                              Add Subject & Class
                             </button>
                           </div>
-                        </div>
-                      ))}
-                      {isEditing && (
-                        <div className="mt-2">
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={handleAddSubjectClass}
-                          >
-                            Add Subject & Class
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="modal-footer">
                     {isEditing ? (
@@ -401,6 +655,15 @@ function TeachersList() {
                       </>
                     ) : (
                       <>
+                        {!isAddMode && (
+                          <button
+                            type="button"
+                            className="btn btn-outline-primary me-2"
+                            onClick={() => setShowPasswordUpdate(true)}
+                          >
+                            Change Password
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn-primary me-2"
@@ -423,9 +686,109 @@ function TeachersList() {
             </div>
           )}
 
-          {teachers.length === 0 && (
-            <div className="text-center text-muted py-4">
-              No teachers registered.
+          {/* Credentials Modal */}
+          {showCredentials && generatedCredentials && (
+            <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Login Credentials Generated</h5>
+                    <button type="button" className="btn-close" onClick={() => {
+                      setShowCredentials(false);
+                      setShowTeacherDetails(false);
+                      setGeneratedCredentials(null);
+                    }}></button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="alert alert-info">
+                      <p className="mb-2">Please save these credentials securely. They will be needed for the staff member to log in.</p>
+                      <p className="mb-1"><strong>Email:</strong> {generatedCredentials.email}</p>
+                      <p className="mb-0"><strong>Password:</strong> {generatedCredentials.password}</p>
+                    </div>
+                    <div className="alert alert-warning">
+                      <p className="mb-0">Note: For security reasons, these credentials will not be shown again. Please make sure to share them securely with the staff member.</p>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        setShowCredentials(false);
+                        setShowTeacherDetails(false);
+                        setGeneratedCredentials(null);
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Password Update Modal */}
+          {showPasswordUpdate && (
+            <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Change Password</h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => {
+                        setShowPasswordUpdate(false);
+                        setNewPassword("");
+                        setConfirmPassword("");
+                        setPasswordError("");
+                      }}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    {passwordError && <div className="alert alert-danger">{passwordError}</div>}
+                    <div className="mb-3">
+                      <label className="form-label">New Password</label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Confirm New Password</label>
+                      <input
+                        type="password"
+                        className="form-control"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary me-2"
+                      onClick={() => {
+                        setShowPasswordUpdate(false);
+                        setNewPassword("");
+                        setConfirmPassword("");
+                        setPasswordError("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleUpdatePassword}
+                    >
+                      Update Password
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

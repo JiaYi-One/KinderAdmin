@@ -7,11 +7,15 @@ import "bootstrap/dist/css/bootstrap.min.css";
 interface ChangePasswordProps {
   onSuccess?: () => void;
   onCancel?: () => void;
+  userId: string;
+  userEmail: string;
 }
 
 function ChangePassword({ 
   onSuccess, 
-  onCancel
+  onCancel,
+  userId,
+  userEmail
 }: ChangePasswordProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -39,19 +43,9 @@ function ChangePassword({
         throw new Error('Password must be at least 6 characters long');
       }
 
-      // Find parent document by email
+      // Update password in Firestore using the provided userId
       const db = getFirestore();
-      const parentsRef = collection(db, 'parents');
-      const q = query(parentsRef, where('email', '==', user.email));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        throw new Error('Parent document not found');
-      }
-
-      // Get the parent document reference
-      const parentDoc = querySnapshot.docs[0];
-      const parentRef = doc(db, 'parents', parentDoc.id);
+      const parentRef = doc(db, 'parents', userId);
 
       // Update password in Firestore
       await updateDoc(parentRef, {
