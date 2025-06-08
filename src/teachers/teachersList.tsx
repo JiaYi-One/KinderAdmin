@@ -200,7 +200,8 @@ function TeachersList() {
           const userCredential = await createAuthAccount(editedTeacher.teacherEmail, editedTeacher.teacherID);
           const uid = userCredential.user.uid;
 
-          // Create staff document
+          // Create staff document with UID as document ID
+          const staffRef = doc(db, "staff", uid);
           const staffData = {
             teacherID: editedTeacher.teacherID,
             teacherName: editedTeacher.teacherName,
@@ -345,14 +346,17 @@ function TeachersList() {
       }
 
       const auth = getAuth();
-      const user = auth.currentUser;
+      const currentUser = auth.currentUser;
 
-      if (!user) {
+      if (!currentUser) {
         setPasswordError("No authenticated user found");
         return;
       }
 
-      await updatePassword(user, newPassword);
+      // Update password for the current user
+      await updatePassword(currentUser, newPassword);
+      
+      // Update the password in Firestore
       await updateDoc(staffRef, {
         password: newPassword,
         updatedAt: serverTimestamp()
@@ -362,9 +366,20 @@ function TeachersList() {
       setNewPassword("");
       setConfirmPassword("");
       setPasswordError("");
+      
+      // Show success message
+      alert("Password updated successfully!");
     } catch (error) {
       console.error("Error updating password:", error);
-      setPasswordError("Failed to update password. Please try again.");
+      if (error instanceof Error) {
+        if (error.message.includes('auth/requires-recent-login')) {
+          setPasswordError("For security reasons, please log out and log in again before changing the password.");
+        } else {
+          setPasswordError(error.message);
+        }
+      } else {
+        setPasswordError("Failed to update password. Please try again.");
+      }
     }
   };
 
@@ -754,7 +769,9 @@ function TeachersList() {
                         className="form-control"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
                       />
+                      <div className="form-text">Password must be at least 6 characters long</div>
                     </div>
                     <div className="mb-3">
                       <label className="form-label">Confirm New Password</label>
@@ -763,6 +780,7 @@ function TeachersList() {
                         className="form-control"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
                       />
                     </div>
                   </div>

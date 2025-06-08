@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Search } from "lucide-react"
-import { collection, getDocs } from "firebase/firestore"
+import { getAuth } from "firebase/auth"
+import { getFirestore, collection, query, where, getDocs, orderBy } from "firebase/firestore"
 import { db } from "../firebase"
 import { ChatService, Chat as ChatType } from "./chat_service"
 
@@ -23,44 +24,59 @@ export function ChatList() {
   const [showNewChat, setShowNewChat] = useState(false)
 
   useEffect(() => {
-    // Subscribe to real-time chat updates
-    const unsubscribe = ChatService.subscribeToChats((updatedChats: ChatType[]) => {
-      setChats(updatedChats.map((chat: ChatType) => ({
-        id: chat.id,
-        name: `${chat.studentName} (${chat.parentName})`,
-        lastMessage: chat.lastMessage,
-        time: chat.lastMessageTime ? formatTime(chat.lastMessageTime) : '',
-        unread: chat.unread || 0
-      })));
-    });
+    const fetchChatsForStaff = async () => {
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (!user) return;
 
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, [])
-
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const messageDate = new Date(date);
-    
-    // Reset time part for date comparison
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const messageDay = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
-    
-    // Calculate difference in days
-    const diffTime = today.getTime() - messageDay.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      // Today - show time
-      return messageDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (diffDays === 1) {
-      return 'Yesterday';
-    } else if (diffDays < 7) {
-      return `${diffDays} days ago`;
-    } else {
-      return messageDate.toLocaleDateString();
-    }
-  };
+      const db = getFirestore();
+      // 1. Find staff document by teacherEmail
+      const staffQuery = query(collection(db, "staff"), where("teacherEmail", "==", user.email));
+      const staffSnapshot = await getDocs(staffQuery);
+      if (!staffSnapshot.empty) {
+        const staffDoc = staffSnapshot.docs[0];
+        const staffData = staffDoc.data();
+        const teacherID = staffData.teacherID;
+        // 2. Query chats collection for all chats where teacherId matches
+        const chatsQuery = query(
+          collection(db, "chats"),
+          where("teacherId", "==", teacherID),
+          orderBy("lastMessageTime", "desc")
+        );
+        const chatsSnapshot = await getDocs(chatsQuery);
+        const formatChatTime = (date: Date) => {
+          const now = new Date();
+          const diffMs = now.getTime() - date.getTime();
+          const diffHours = diffMs / (1000 * 60 * 60);
+          if (diffHours < 24) {
+            // Show time in HH:mm
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+          } else {
+            // Show date in YYYY-MM-DD
+            return date.toISOString().slice(0, 10);
+          }
+        };
+        const chatList: Chat[] = chatsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          let time = '';
+          if (data.lastMessageTime && data.lastMessageTime.toDate) {
+            time = formatChatTime(data.lastMessageTime.toDate());
+          }
+          return {
+            id: doc.id,
+            name: `${data.studentName} (${data.parentName})`,
+            lastMessage: data.lastMessage,
+            time,
+            unread: data.unread || 0
+          };
+        });
+        setChats(chatList);
+      } else {
+        setChats([]);
+      }
+    };
+    fetchChatsForStaff();
+  }, []);
 
   const handleChatClick = (chatId: string) => {
     navigate(`/chat/${chatId}`, { replace: true })
