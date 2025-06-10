@@ -1,5 +1,6 @@
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc, where } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { getAuth } from 'firebase/auth';
 
 export type Message = {
     id: string;
@@ -26,7 +27,27 @@ export type Chat = {
 };
 
 export class ChatService {
-    static readonly webUser = 'Admin'; // Hardcoded web user role
+    // Get current user's teacher ID
+    private static async getCurrentTeacherId(): Promise<string> {
+        const auth = getAuth();
+        const user = auth.currentUser;
+
+        if (!user) {
+            throw new Error('No user logged in');
+        }
+
+        // Query staff collection to find the staff document with matching email
+        const staffRef = collection(db, 'staff');
+        const q = query(staffRef, where('teacherEmail', '==', user.email));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            throw new Error('Staff document not found');
+        }
+
+        const staffData = querySnapshot.docs[0].data();
+        return staffData.teacherID;
+    }
 
     // Create a new chat message
     static async sendMessage(
@@ -40,10 +61,11 @@ export class ChatService {
         }
     ) {
         try {
+            const teacherId = await this.getCurrentTeacherId();
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
                 ...message,
-                webUser: this.webUser, // Set web user as ADMIN
+                webUser: teacherId,
                 timestamp: serverTimestamp(),
             });
 
@@ -53,7 +75,7 @@ export class ChatService {
                 lastMessage: message.content,
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: message.sender,
-                webUser: this.webUser,
+                webUser: teacherId,
             });
 
             return messageDoc.id;
@@ -83,12 +105,13 @@ export class ChatService {
     // Create a new chat
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
+            const teacherId = await this.getCurrentTeacherId();
             const chatRef = collection(db, 'chats');
             const chatDoc = await addDoc(chatRef, {
                 parentId,
                 studentName,
                 parentName,
-                webUser: this.webUser, // Set web user as ADMIN
+                webUser: teacherId,
                 createdAt: serverTimestamp(),
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
