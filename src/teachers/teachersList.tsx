@@ -564,24 +564,30 @@ function TeachersList() {
                       <label className="form-label">Name</label>
                       <input
                         type="text"
-                        className="form-control bg-light"
+                        className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
                         name="teacherName"
                         value={editedTeacher?.teacherName || ""}
-                        readOnly
+                        onChange={handleInputChange}
+                        readOnly={!isEditing && !isAddMode}
                       />
-                      <div className="form-text text-muted">Name cannot be edited</div>
+                      {!isAddMode && (
+                        <div className="form-text text-muted">Name cannot be edited</div>
+                      )}
                     </div>
                     
                     <div className="mb-3">
                       <label className="form-label">Email</label>
                       <input
                         type="email"
-                        className="form-control bg-light"
+                        className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
                         name="teacherEmail"
                         value={editedTeacher?.teacherEmail || ""}
-                        readOnly
+                        onChange={handleInputChange}
+                        readOnly={!isEditing && !isAddMode}
                       />
-                      <div className="form-text text-muted">Email cannot be edited</div>
+                      {!isAddMode && (
+                        <div className="form-text text-muted">Email cannot be edited</div>
+                      )}
                     </div>
                     
                     <div className="mb-3">
