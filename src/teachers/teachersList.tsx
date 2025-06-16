@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, getDoc, serverTimestamp } from "firebase/firestore";
-import { getAuth, createUserWithEmailAndPassword, updatePassword } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, updatePassword, deleteUser } from "firebase/auth";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 
@@ -200,8 +200,8 @@ function TeachersList() {
           const userCredential = await createAuthAccount(editedTeacher.teacherEmail, editedTeacher.teacherID);
           const uid = userCredential.user.uid;
 
-          // Create staff document with UID as document ID
-          const staffRef = doc(db, "staff", uid);
+          // Create staff document with teacherName as document ID
+          const staffRef = doc(db, "staff", editedTeacher.teacherName);
           const staffData = {
             teacherID: editedTeacher.teacherID,
             teacherName: editedTeacher.teacherName,
@@ -234,11 +234,20 @@ function TeachersList() {
         }
       } else {
         try {
+          // Ensure name and email haven't been changed
+          if (selectedTeacher) {
+            if (selectedTeacher.teacherName !== editedTeacher.teacherName) {
+              setError("Name cannot be modified");
+              return;
+            }
+            if (selectedTeacher.teacherEmail !== editedTeacher.teacherEmail) {
+              setError("Email cannot be modified");
+              return;
+            }
+          }
+
           // Update existing staff
           const updateData = {
-            teacherID: editedTeacher.teacherID,
-            teacherName: editedTeacher.teacherName,
-            teacherEmail: editedTeacher.teacherEmail,
             teacherPhone: editedTeacher.teacherPhone,
             role: editedTeacher.role,
             subjectClasses: editedTeacher.subjectClasses || [],
@@ -278,11 +287,26 @@ function TeachersList() {
   const handleDelete = async (teacher: Teacher) => {
     if (window.confirm(`Are you sure you want to delete ${teacher.teacherName}?`)) {
       try {
-        const staffRef = doc(db, "staff", teacher.teacherName);
+        // Delete from Firestore
+        const staffRef = doc(db, "staff", teacher.id);
         await deleteDoc(staffRef);
+
+        // Delete from Firebase Auth
+        const auth = getAuth();
+        const user = auth.currentUser;
+        
+        if (user && user.email === teacher.teacherEmail) {
+          await deleteUser(user);
+        } else {
+          // If the current user is not the one being deleted, we need to sign in as that user first
+          // This is a limitation of Firebase Auth - only the current user can be deleted
+          setError("Cannot delete authentication account. Please contact an administrator.");
+        }
+
         fetchTeachers();
       } catch (error) {
         console.error("Error deleting staff:", error);
+        setError("Failed to delete staff. Please try again.");
       }
     }
   };
@@ -540,27 +564,24 @@ function TeachersList() {
                       <label className="form-label">Name</label>
                       <input
                         type="text"
-                        className={`form-control${!isEditing ? ' bg-light' : ''}`}
+                        className="form-control bg-light"
                         name="teacherName"
                         value={editedTeacher?.teacherName || ""}
-                        onChange={handleInputChange}
-                        readOnly={!isEditing}
+                        readOnly
                       />
+                      <div className="form-text text-muted">Name cannot be edited</div>
                     </div>
                     
                     <div className="mb-3">
                       <label className="form-label">Email</label>
                       <input
                         type="email"
-                        className={`form-control${!isEditing ? ' bg-light' : ''}`}
+                        className="form-control bg-light"
                         name="teacherEmail"
                         value={editedTeacher?.teacherEmail || ""}
-                        onChange={handleInputChange}
-                        readOnly={!isEditing}
+                        readOnly
                       />
-                      {isAddMode && (
-                        <div className="form-text">This email will be used for login</div>
-                      )}
+                      <div className="form-text text-muted">Email cannot be edited</div>
                     </div>
                     
                     <div className="mb-3">

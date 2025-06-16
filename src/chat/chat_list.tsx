@@ -30,51 +30,62 @@ export function ChatList() {
       if (!user) return;
 
       const db = getFirestore();
-      // 1. Find staff document by teacherEmail
-      const staffQuery = query(collection(db, "staff"), where("teacherEmail", "==", user.email));
-      const staffSnapshot = await getDocs(staffQuery);
-      if (!staffSnapshot.empty) {
-        const staffDoc = staffSnapshot.docs[0];
-        const staffData = staffDoc.data();
-        const teacherID = staffData.teacherID;
-        // 2. Query chats collection for all chats where teacherId matches
-        const chatsQuery = query(
-          collection(db, "chats"),
-          where("teacherId", "==", teacherID),
-          orderBy("lastMessageTime", "desc")
-        );
-        const chatsSnapshot = await getDocs(chatsQuery);
-        const formatChatTime = (date: Date) => {
-          const now = new Date();
-          const diffMs = now.getTime() - date.getTime();
-          const diffHours = diffMs / (1000 * 60 * 60);
-          if (diffHours < 24) {
-            // Show time in HH:mm
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-          } else {
-            // Show date in YYYY-MM-DD
-            return date.toISOString().slice(0, 10);
-          }
-        };
-        const chatList: Chat[] = chatsSnapshot.docs.map(doc => {
-          const data = doc.data();
-          let time = '';
-          if (data.lastMessageTime && data.lastMessageTime.toDate) {
-            time = formatChatTime(data.lastMessageTime.toDate());
-          }
-          return {
-            id: doc.id,
-            name: `${data.studentName} (${data.parentName})`,
-            lastMessage: data.lastMessage,
-            time,
-            unread: data.unread || 0
+      try {
+        // 1. Find staff document by teacherEmail
+        const staffQuery = query(collection(db, "staff"), where("teacherEmail", "==", user.email));
+        const staffSnapshot = await getDocs(staffQuery);
+        
+        if (!staffSnapshot.empty) {
+          const staffDoc = staffSnapshot.docs[0];
+          const staffData = staffDoc.data();
+          const teacherID = staffData.teacherID;
+
+          // 2. Query chats collection for all chats where teacherId matches
+          const chatsQuery = query(
+            collection(db, "chats"),
+            where("teacherId", "==", teacherID),
+            orderBy("lastMessageTime", "desc")
+          );
+          
+          const chatsSnapshot = await getDocs(chatsQuery);
+          
+          const formatChatTime = (date: Date) => {
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffHours = diffMs / (1000 * 60 * 60);
+            if (diffHours < 24) {
+              return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            } else {
+              return date.toISOString().slice(0, 10);
+            }
           };
-        });
-        setChats(chatList);
-      } else {
+
+          const chatList: Chat[] = chatsSnapshot.docs.map(doc => {
+            const data = doc.data();
+            let time = '';
+            if (data.lastMessageTime && data.lastMessageTime.toDate) {
+              time = formatChatTime(data.lastMessageTime.toDate());
+            }
+            return {
+              id: doc.id,
+              name: `${data.studentName} (${data.parentName})`,
+              lastMessage: data.lastMessage || 'No messages yet',
+              time,
+              unread: data.unread || 0
+            };
+          });
+          
+          setChats(chatList);
+        } else {
+          console.log("No staff document found for current user");
+          setChats([]);
+        }
+      } catch (error) {
+        console.error("Error fetching chats:", error);
         setChats([]);
       }
     };
+
     fetchChatsForStaff();
   }, []);
 
