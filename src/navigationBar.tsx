@@ -4,6 +4,8 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import styles from "./NavigationBar.module.css";
 import { FC, useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "./firebase";
 
 interface NavLinkProps {
   to: string;
@@ -26,14 +28,32 @@ const NavigationBar: FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [staffName, setStaffName] = useState<string>("");
 
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setIsAuthenticated(true);
+        // Fetch staff name from Firestore
+        try {
+          const staffQuery = query(
+            collection(db, "staff"),
+            where("teacherEmail", "==", user.email)
+          );
+          const staffSnapshot = await getDocs(staffQuery);
+          if (!staffSnapshot.empty) {
+            const staffData = staffSnapshot.docs[0].data();
+            setStaffName(staffData.teacherName || "");
+          } else {
+            setStaffName("Not found");
+          }
+        } catch {
+          setStaffName("Error");
+        }
       } else {
         setIsAuthenticated(false);
+        setStaffName("");
       }
     });
 
@@ -57,6 +77,12 @@ const NavigationBar: FC = () => {
   return (
     <header className="d-flex justify-content-between align-items-center p-3 bg-light">
       <h1 className="fw-bold">KinderCare</h1>
+      {/* Show current staff name for testing */}
+      {isAuthenticated && (
+        <span style={{ fontWeight: 500 }}>
+          {staffName ? `Staff: ${staffName}` : 'Loading staff name...'}
+        </span>
+      )}
       <nav className="d-flex align-items-center">
         <NavLink to="/" currentPath={location.pathname}>
           Dashboard
