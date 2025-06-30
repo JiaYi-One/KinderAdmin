@@ -8,6 +8,8 @@ import TeachersList from "./teachers/teachersList";
 import Login from "./auth/login";
 import { useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import AttendancePage from "./attendance/AttendanceMain";
+import TakeAttendance from "./attendance/TakeAttendance";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -70,6 +72,14 @@ function App() {
         <Route 
           path="/teachers/teachersList" 
           element={isAuthenticated ? <TeachersList /> : <Navigate to="/login" replace />} 
+        />
+        <Route 
+          path="/attendance/AttendanceMain" 
+          element={isAuthenticated ? <AttendancePage /> : <Navigate to="/login" replace />} 
+        />
+        <Route 
+          path="/attendance/TakeAttendance" 
+          element={isAuthenticated ? <TakeAttendance /> : <Navigate to="/login" replace />} 
         />
       </Routes>
     </>
