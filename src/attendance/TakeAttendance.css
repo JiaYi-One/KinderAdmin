@@ -1,0 +1,14 @@
+/* Override italic styling for class IDs */
+.panel-list-item .left-container .item-display-container .item-label-button.italicize {
+    font-style: normal !important;
+}
+
+/* Alternative: Target any element with italicize class */
+.italicize {
+    font-style: normal !important;
+}
+
+/* More specific override for class ID elements */
+[class*="panel-list-item"] [class*="italicize"] {
+    font-style: normal !important;
+}

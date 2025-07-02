@@ -147,7 +147,7 @@ export default function Dashboard() {
             onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.23)"}
             onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)"}
           >
-            <Link to="/reports" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link to="/attendance/AttendanceReport" style={{ textDecoration: "none", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
                 <TrendingUpIcon style={{ color: "#2e7d32" }} />
                 <Typography variant="h6">View Reports</Typography>

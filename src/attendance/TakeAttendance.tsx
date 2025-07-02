@@ -10,7 +10,8 @@ import SaveIcon from "@mui/icons-material/Save"
 import GroupIcon from "@mui/icons-material/Group"
 import { Link } from "react-router-dom"
 import { db } from "../firebase"
-import { collection, getDocs } from "firebase/firestore"
+import { collection, getDocs, doc, setDoc } from "firebase/firestore"
+import "./TakeAttendance.css"
 
 // Interface for class data
 interface ClassData {
@@ -23,13 +24,13 @@ interface ClassData {
 interface StudentData {
   id: string;
   name: string;
-  rollNo: string;
+  studentID: string;
   photo?: string;
 }
 
 export default function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState("")
-  const [attendance, setAttendance] = useState<Record<string, "present" | "absent" | "late">>({})
+  const [attendance, setAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({})
   const [isSaving, setIsSaving] = useState(false)
   const [classes, setClasses] = useState<ClassData[]>([])
   const [students, setStudents] = useState<StudentData[]>([])
@@ -45,9 +46,16 @@ export default function AttendancePage() {
         const classesData: ClassData[] = []
         classesSnapshot.forEach((doc) => {
           const data = doc.data()
+          const classId = doc.id
+          const className = data.name || doc.id
+          
+          // Debug: Log each class ID to see what's in the database
+          console.log("Class ID from DB:", classId, "Type:", typeof classId)
+          console.log("Class Name from DB:", className, "Type:", typeof className)
+          
           classesData.push({
-            id: doc.id,
-            name: data.name || doc.id,
+            id: classId,
+            name: className,
             students: data.studentCount || 0
           })
         })
@@ -82,7 +90,7 @@ export default function AttendancePage() {
           studentsData.push({
             id: doc.id,
             name: data.name || "Unknown Student",
-            rollNo: data.rollNo || doc.id,
+            studentID: data.studentID || doc.id,
             photo: data.photo || "/placeholder.svg?height=40&width=40"
           })
         })
@@ -99,7 +107,7 @@ export default function AttendancePage() {
     fetchStudents()
   }, [selectedClass])
 
-  const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "late") => {
+  const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "on leave") => {
     setAttendance((prev) => ({
       ...prev,
       [studentId]: status,
@@ -109,16 +117,37 @@ export default function AttendancePage() {
   const handleSaveAttendance = async () => {
     setIsSaving(true)
     try {
-      // TODO: Save attendance data to Firestore
-      // This would typically save to an 'attendance' collection with date, class, and student data
-      console.log("Saving attendance:", {
-        classId: selectedClass,
-        date: new Date().toISOString().split('T')[0],
-        attendance: attendance
-      })
+      // Get current date in yyyy-mm-dd format
+      const today = new Date()
+      const dateString = today.toISOString().split('T')[0]
       
-      // Simulate API call for now
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Ensure class ID is stored as clean string without any formatting
+      
+
+      
+      // Save attendance for each student
+      const savePromises = Object.entries(attendance).map(async ([studentId, status]) => {
+        const student = students.find(s => s.id === studentId)
+        if (!student) return
+      
+        
+        console.log("Saving to path:", `attendance/${selectedClass}/${dateString}/${studentId}`)
+
+       const studentDocRef = doc(
+          db,
+          "attendance",
+          selectedClass,   // "3Y" (collection)
+          dateString,      // "2025-07-02" (collection)
+          studentId        // doc
+        );
+        await setDoc(studentDocRef, {
+          studentId: studentId,
+          name: student.name,
+          status: status,
+          timestamp: today.toISOString()
+        })
+      })
+      await Promise.all(savePromises)
       alert("Attendance saved successfully!")
       
       // Reset attendance after saving
@@ -135,8 +164,8 @@ export default function AttendancePage() {
     const total = students.length
     const present = Object.values(attendance).filter((status) => status === "present").length
     const absent = Object.values(attendance).filter((status) => status === "absent").length
-    const late = Object.values(attendance).filter((status) => status === "late").length
-    return { total, present, absent, late }
+    const onLeave = Object.values(attendance).filter((status) => status === "on leave").length
+    return { total, present, absent, onLeave }
   }
 
   const stats = getAttendanceStats()
@@ -249,9 +278,9 @@ export default function AttendancePage() {
                 textAlign: "center"
               }}>
                 <Typography variant="h4" fontWeight="bold" color="warning.main">
-                  {stats.late}
+                  {stats.onLeave}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">Late</Typography>
+                <Typography variant="body2" color="text.secondary">On Leave</Typography>
               </div>
             </div>
 
@@ -301,7 +330,7 @@ export default function AttendancePage() {
                         <div>
                           <Typography variant="h6">{student.name}</Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Roll No: {student.rollNo}
+                            Student ID: {student.studentID}
                           </Typography>
                         </div>
                       </div>
@@ -315,12 +344,12 @@ export default function AttendancePage() {
                           Present
                         </Button>
                         <Button
-                          variant={attendance[student.id] === "late" ? "contained" : "outlined"}
+                          variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
                           color="warning"
                           size="small"
-                          onClick={() => handleAttendanceChange(student.id, "late")}
+                          onClick={() => handleAttendanceChange(student.id, "on leave")}
                         >
-                          Late
+                          On Leave
                         </Button>
                         <Button
                           variant={attendance[student.id] === "absent" ? "contained" : "outlined"}
@@ -339,7 +368,11 @@ export default function AttendancePage() {
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
                 <Button
                   onClick={handleSaveAttendance}
-                  disabled={isSaving || Object.keys(attendance).length === 0 || students.length === 0}
+                  disabled={
+                    isSaving ||
+                    students.length === 0 ||
+                    Object.keys(attendance).length !== students.length
+                  }
                   startIcon={<SaveIcon />}
                   variant="contained"
                   color="primary"
