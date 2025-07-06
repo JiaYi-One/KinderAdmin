@@ -335,6 +335,7 @@ function CreateBill() {
             amount: bill.totalAmount,
             studentName: bill.studentName,
             dueDate: bill.dueDate,
+            billDate: bill.billDate,
           })),
         });
       }

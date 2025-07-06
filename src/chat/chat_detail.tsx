@@ -1,98 +1,9 @@
-import { useState, useEffect } from "react"
-import { useParams, useLocation } from "react-router-dom"
-
-type Message = {
-  id: string
-  content: string
-  sender: string
-  timestamp: string
-}
-
-// Mock data for different chats
-const mockChatData = {
-  "1": {
-    name: "Mrs. Johnson",
-    avatar: "/placeholder.svg?height=40&width=40",
-    messages: [
-      {
-        id: "1",
-        content: "Hello! How is Alex doing with the math homework?",
-        sender: "Mrs. Johnson",
-        timestamp: "10:30 AM",
-      },
-      {
-        id: "2",
-        content: "Hi Mrs. Johnson! Alex is doing well with the homework. He completed all the problems.",
-        sender: "You",
-        timestamp: "10:32 AM",
-      },
-      {
-        id: "3",
-        content: "That's great to hear! He's been showing good progress in class.",
-        sender: "Mrs. Johnson",
-        timestamp: "10:33 AM",
-      }
-    ]
-  },
-  "2": {
-    name: "Mr. Smith",
-    avatar: "/placeholder.svg?height=40&width=40",
-    messages: [
-      {
-        id: "1",
-        content: "The science project is due next Friday.",
-        sender: "Mr. Smith",
-        timestamp: "Yesterday",
-      },
-      {
-        id: "2",
-        content: "Thank you for the reminder. Will make sure Alex completes it on time.",
-        sender: "You",
-        timestamp: "Yesterday",
-      }
-    ]
-  },
-  "3": {
-    name: "Mrs. Garcia",
-    avatar: "/placeholder.svg?height=40&width=40",
-    messages: [
-      {
-        id: "1",
-        content: "Thank you for attending the parent-teacher conference.",
-        sender: "Mrs. Garcia",
-        timestamp: "2 days ago",
-      },
-      {
-        id: "2",
-        content: "It was a pleasure meeting you. Thank you for the detailed feedback.",
-        sender: "You",
-        timestamp: "2 days ago",
-      }
-    ]
-  },
-  "4": {
-    name: "Mr. Wilson",
-    avatar: "/placeholder.svg?height=40&width=40",
-    messages: [
-      {
-        id: "1",
-        content: "Emma has been doing great in PE class!",
-        sender: "Mr. Wilson",
-        timestamp: "3 days ago",
-      },
-      {
-        id: "2",
-        content: "That's wonderful to hear! She really enjoys physical activities.",
-        sender: "You",
-        timestamp: "3 days ago",
-      }
-    ]
-  }
-}
+import { useState, useEffect, useRef } from "react"
+import { useParams } from "react-router-dom"
+import { ChatService, Message } from "./chat_service"
 
 export function ChatDetail() {
   const { id } = useParams()
-  const location = useLocation();
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [chatInfo, setChatInfo] = useState({
@@ -101,48 +12,64 @@ export function ChatDetail() {
     studentName: "",
     parentName: "",
   })
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
+  }
 
   useEffect(() => {
     if (!id) return
 
-    // Check if this is an existing chat in our mock data
-    const chatData = mockChatData[id as keyof typeof mockChatData]
-    
-    if (chatData) {
-      // This is an existing chat
-      setChatInfo({
-        name: chatData.name,
-        avatar: chatData.avatar,
-        studentName: "", // Not available in mock
-        parentName: chatData.name,
-      })
-      setMessages(chatData.messages)
-    } else {
-      // This is a new chat, use location state if available
-      setChatInfo({
-        name: "",
-        avatar: "",
-        studentName: location.state?.studentName || "",
-        parentName: location.state?.parentName || id,
-      })
-      // For new chats, start with empty messages array
-      setMessages([])
-    }
-  }, [id, location.state])
+    // Subscribe to messages for this chat
+    const unsubscribe = ChatService.subscribeToMessages(id, (updatedMessages) => {
+      setMessages(updatedMessages)
+      // Scroll to bottom instantly after messages are loaded
+      requestAnimationFrame(scrollToBottom)
+    })
 
-  const handleSendMessage = (e: React.FormEvent) => {
+    // Cleanup subscription on unmount
+    return () => unsubscribe()
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+
+    // Subscribe to chat updates to get chat info
+    const unsubscribe = ChatService.subscribeToChats((chats) => {
+      const currentChat = chats.find(chat => chat.id === id)
+      if (currentChat) {
+        setChatInfo({
+          name: currentChat.parentName,
+          avatar: currentChat.image || "",
+          studentName: currentChat.studentName,
+          parentName: currentChat.parentName,
+        })
+      }
+    })
+
+    return () => unsubscribe()
+  }, [id])
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim()) return
+    if (!newMessage.trim() || !id) return
 
-    const message: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      sender: "You",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    try {
+      await ChatService.sendMessage(id, {
+        content: newMessage,
+        sender: "ADMIN",
+        studentName: chatInfo.studentName,
+        parentName: chatInfo.parentName,
+        webUser: "ADMIN",
+      })
+      setNewMessage("")
+      // Scroll to bottom instantly after sending message
+      requestAnimationFrame(scrollToBottom)
+    } catch (error) {
+      console.error("Error sending message:", error)
+      // You might want to show an error message to the user here
     }
-
-    setMessages([...messages, message])
-    setNewMessage("")
   }
 
   if (!id) {
@@ -157,7 +84,7 @@ export function ChatDetail() {
   }
 
   return (
-    <div className="d-flex flex-column vh-100">
+    <div className="d-flex flex-column h-100 position-relative">
       {/* Header - fixed */}
       <div className="p-3 border-bottom bg-light d-flex align-items-center flex-shrink-0">
         <div>
@@ -170,29 +97,51 @@ export function ChatDetail() {
       </div>
 
       {/* Scrollable messages area */}
-      <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white">
+      <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white position-relative">
         {messages.length > 0 ? (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`d-flex mb-3 ${message.sender === "You" ? 'justify-content-end' : 'justify-content-start'}`}
-            >
-              <div
-                className={`p-3 rounded-3 ${message.sender === "You" ? 'bg-primary text-white' : 'bg-light'}`}
-                style={{ maxWidth: '70%' }}
-              >
-                <div className="d-flex align-items-center mb-1">
-                  <small className={message.sender === "You" ? 'text-white-50' : 'text-muted'}>
-                    {message.sender}
-                  </small>
-                  <small className={`ms-2 ${message.sender === "You" ? 'text-white-50' : 'text-muted'}`}>
-                    {message.timestamp}
-                  </small>
+          <>
+            {messages.map((message) => {
+              const isAdmin = message.sender === "ADMIN";
+              return (
+                <div
+                  key={message.id}
+                  className={`d-flex mb-3 ${isAdmin ? 'justify-content-end' : 'justify-content-start'}`}
+                >
+                  {!isAdmin && (
+                    <div className="me-2 flex-shrink-0">
+                      <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                        <span className="text-white">{message.sender[0]}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`p-3 rounded-3 ${isAdmin ? 'bg-primary text-white' : 'bg-light'}`}
+                    style={{ maxWidth: '70%' }}
+                  >
+                    {!isAdmin && (
+                      <div className="d-flex align-items-center mb-1">
+                        <small className="text-muted">
+                          {message.studentName} ({message.parentName})
+                        </small>
+                      </div>
+                    )}
+                    <p className="mb-0">{message.content}</p>
+                    <small className={`mt-1 d-block ${isAdmin ? 'text-white-50' : 'text-muted'}`}>
+                      {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </small>
+                  </div>
+                  {isAdmin && (
+                    <div className="ms-2 flex-shrink-0">
+                      <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
+                        <span className="text-white">A</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="mb-0">{message.content}</p>
-              </div>
-            </div>
-          ))
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </>
         ) : (
           <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
             <p>No messages yet. Start the conversation!</p>
