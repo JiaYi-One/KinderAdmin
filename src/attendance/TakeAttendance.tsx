@@ -12,6 +12,10 @@ import { Link } from "react-router-dom"
 import { db } from "../firebase"
 import { collection, getDocs, doc, setDoc } from "firebase/firestore"
 import "./TakeAttendance.css"
+import { DatePicker } from '@mui/x-date-pickers/DatePicker'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import dayjs, { Dayjs } from 'dayjs'
 
 // Interface for class data
 interface ClassData {
@@ -35,6 +39,15 @@ export default function AttendancePage() {
   const [classes, setClasses] = useState<ClassData[]>([])
   const [students, setStudents] = useState<StudentData[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState<Dayjs>(() => {
+    const today = dayjs();
+    // If today is weekend, select next Monday
+    if (today.day() === 0) return today.add(1, 'day'); // Sunday -> Monday
+    if (today.day() === 6) return today.add(2, 'day'); // Saturday -> Monday
+    return today;
+  });
+  const [attendanceExists, setAttendanceExists] = useState(false);
+  const [originalAttendance, setOriginalAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({});
 
   // Fetch classes from database
   useEffect(() => {
@@ -107,6 +120,37 @@ export default function AttendancePage() {
     fetchStudents()
   }, [selectedClass])
 
+  // Fetch existing attendance for selected class and date
+  useEffect(() => {
+    const fetchExistingAttendance = async () => {
+      if (!selectedClass || !selectedDate) {
+        setAttendance({});
+        setOriginalAttendance({});
+        setAttendanceExists(false);
+        return;
+      }
+      const dateString = selectedDate.format('YYYY-MM-DD');
+      const attendanceCol = collection(db, "attendance", selectedClass, dateString);
+      const snapshot = await getDocs(attendanceCol);
+      if (!snapshot.empty) {
+        // Attendance exists, pre-fill
+        const att: Record<string, "present" | "absent" | "on leave"> = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          att[data.studentId] = data.status;
+        });
+        setAttendance(att);
+        setOriginalAttendance(att);
+        setAttendanceExists(true);
+      } else {
+        setAttendance({});
+        setOriginalAttendance({});
+        setAttendanceExists(false);
+      }
+    };
+    fetchExistingAttendance();
+  }, [selectedClass, selectedDate]);
+
   const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "on leave") => {
     setAttendance((prev) => ({
       ...prev,
@@ -117,13 +161,8 @@ export default function AttendancePage() {
   const handleSaveAttendance = async () => {
     setIsSaving(true)
     try {
-      // Get current date in yyyy-mm-dd format
-      const today = new Date()
-      const dateString = today.toISOString().split('T')[0]
-      
-      // Ensure class ID is stored as clean string without any formatting
-      
-
+      // Use selected date in yyyy-mm-dd format
+      const dateString = selectedDate.format('YYYY-MM-DD');
       
       // Save attendance for each student
       const savePromises = Object.entries(attendance).map(async ([studentId, status]) => {
@@ -144,7 +183,7 @@ export default function AttendancePage() {
           studentId: studentId,
           name: student.name,
           status: status,
-          timestamp: today.toISOString()
+          timestamp: selectedDate.toISOString()
         })
       })
       await Promise.all(savePromises)
@@ -170,6 +209,15 @@ export default function AttendancePage() {
 
   const stats = getAttendanceStats()
 
+  const isAttendanceModified = () => {
+    const keys = Object.keys(originalAttendance);
+    if (keys.length !== Object.keys(attendance).length) return true;
+    for (const key of keys) {
+      if (attendance[key] !== originalAttendance[key]) return true;
+    }
+    return false;
+  };
+
   if (loading && classes.length === 0) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
@@ -189,9 +237,36 @@ export default function AttendancePage() {
           <div>
             <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
             <Typography color="textSecondary">
-              Mark attendance for today - {new Date().toLocaleDateString()}
+              Mark attendance for selected date
             </Typography>
           </div>
+        </div>
+        {/* Date Picker */}
+        <div style={{ marginBottom: 24 }}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker
+              label="Select Date"
+              value={selectedDate}
+              onChange={(newValue) => {
+                if (newValue && newValue.day() !== 0 && newValue.day() !== 6) {
+                  setSelectedDate(newValue);
+                }
+              }}
+              shouldDisableDate={(date) => {
+                // Disable weekends (Saturday = 6, Sunday = 0)
+                const dayOfWeek = date.day();
+                return dayOfWeek === 0 || dayOfWeek === 6;
+              }}
+              slotProps={{
+                textField: {
+                  variant: "outlined",
+                  size: "small",
+                  sx: { minWidth: 200 },
+                  helperText: "Only weekdays (Monday to Friday) are available"
+                }
+              }}
+            />
+          </LocalizationProvider>
         </div>
 
         {/* Class Selection */}
@@ -371,13 +446,16 @@ export default function AttendancePage() {
                   disabled={
                     isSaving ||
                     students.length === 0 ||
-                    Object.keys(attendance).length !== students.length
+                    Object.keys(attendance).length !== students.length ||
+                    (attendanceExists && !isAttendanceModified())
                   }
                   startIcon={<SaveIcon />}
                   variant="contained"
                   color="primary"
                 >
-                  {isSaving ? "Saving..." : "Save Attendance"}
+                  {isSaving
+                    ? (attendanceExists ? "Updating..." : "Saving...")
+                    : (attendanceExists ? "Update Attendance" : "Save Attendance")}
                 </Button>
               </div>
             </div>
