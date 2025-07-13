@@ -54,6 +54,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ChipProps } from '@mui/material';
 import AttendanceDataService from './attendanceService';
+import { fetchDailyAttendance, fetchMonthlyAttendance } from './attendanceService';
 
 // Utility: Get all dates in a specific week (Mon-Fri)
 function getWeekDates(startDate: Date): Date[] {
@@ -81,7 +82,10 @@ function getMonthDates(year: number, month: number): Date[] {
 
 // Utility: Format date as yyyy-mm-dd
 function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Utility: Get month name
@@ -114,6 +118,7 @@ function getNextWeekday(date: Date): Date {
 // Types for attendance data
 interface WeeklyData {
   day: string;
+  date: string; // Add this line
   present: number;
   absent: number;
   leave: number;
@@ -214,6 +219,11 @@ export default function ReportsPage() {
   const [loadingDateDetails, setLoadingDateDetails] = useState(false);
   const [selectedClassForDate, setSelectedClassForDate] = useState<string | null>(null);
 
+  // Debug selectedDay state changes
+  useEffect(() => {
+    console.log('selectedDay state changed to:', selectedDay);
+  }, [selectedDay]);
+
   // Fetch class IDs
   useEffect(() => {
     setLoadingClasses(true);
@@ -243,7 +253,7 @@ export default function ReportsPage() {
     const fetchDaily = async () => {
       try {
         const date = selectedDate.format('YYYY-MM-DD');
-        const results = await AttendanceDataService.fetchBulkAttendance(classIDs, [date]);
+        const results = await fetchDailyAttendance(classIDs, [date]);
         const totals = results.reduce((acc, curr) => ({
           present: acc.present + curr.present,
           absent: acc.absent + curr.absent,
@@ -271,7 +281,7 @@ export default function ReportsPage() {
     fetchDaily();
   }, [selectedDate, classIDs]);
 
-  // Fetch Weekly Attendance for all classes
+  // Fetch Weekly Attendance for all classes - CORRECTED VERSION
   useEffect(() => {
     if (classIDs.length === 0) return;
     setLoadingWeekly(true);
@@ -279,21 +289,45 @@ export default function ReportsPage() {
       try {
         const weekDates = getWeekDates(selectedWeek);
         const dateStrings = weekDates.map(date => formatDate(date));
+        console.log('Weekly fetch - Date strings:', dateStrings);
+        console.log('Weekly fetch - Class IDs:', classIDs);
+        
+        // Use fetchBulkAttendance instead of fetchWeeklyAttendance for consistency
         const results = await AttendanceDataService.fetchBulkAttendance(classIDs, dateStrings);
-        // Group by date
+        console.log('Weekly fetch - Raw results:', results);
+        console.log('Weekly fetch - Class IDs:', classIDs);
+        console.log('Weekly fetch - Date strings:', dateStrings);
+        
+        // Group by date - results now have the structure: { classId, date, present, absent, leave, total, percentage, students }
         const dailyData = dateStrings.map((dateString, index) => {
+          console.log(`Processing date: ${dateString}`);
+          console.log(`All results:`, results);
+          console.log(`Results with date ${dateString}:`, results.filter(r => r.date === dateString));
+          
           const dayResults = results.filter(r => r.date === dateString);
+          console.log(`Weekly fetch - Day ${dateString} results:`, dayResults);
+          
+          // Calculate totals across all classes for this date
           const dayTotals = dayResults.reduce((acc, curr) => ({
             present: acc.present + curr.present,
             absent: acc.absent + curr.absent,
             leave: acc.leave + curr.leave,
             total: acc.total + curr.total
           }), { present: 0, absent: 0, leave: 0, total: 0 });
+          
+          console.log(`Weekly fetch - Day ${dateString} totals:`, dayTotals);
+          
+          const dayLabel = `${weekDates[index].getDate()} ${weekDates[index].toLocaleDateString(undefined, { month: "short" })} - ${weekDates[index].toLocaleDateString(undefined, { weekday: "long" })}`;
+          console.log(`Weekly fetch - Day label: ${dayLabel}`);
+          
           return {
-            day: `${weekDates[index].getDate()} ${weekDates[index].toLocaleDateString(undefined, { month: "short" })} - ${weekDates[index].toLocaleDateString(undefined, { weekday: "long" })}`,
+            day: dayLabel,
+            date: dateString, // Add date for reference
             ...dayTotals
           };
         });
+        
+        console.log('Weekly fetch - Final daily data:', dailyData);
         setWeeklyData(dailyData);
       } catch (err) {
         console.error('Error fetching weekly attendance:', err);
@@ -321,7 +355,7 @@ export default function ReportsPage() {
           });
           const dateStrings = weekdays.map(date => formatDate(date));
           if (dateStrings.length === 0) continue;
-          const results = await AttendanceDataService.fetchBulkAttendance(classIDs, dateStrings);
+          const results = await fetchMonthlyAttendance(classIDs, dateStrings);
           let sumOfDailyPercentages = 0, presentDays = 0, hasRecords = false;
           dateStrings.forEach(dateString => {
             const dayResults = results.filter(r => r.date === dateString);
@@ -380,7 +414,7 @@ export default function ReportsPage() {
           setMonthDetailsData([]);
           return;
         }
-        const results = await AttendanceDataService.fetchBulkAttendance(classIDs, dateStrings);
+        const results = await fetchMonthlyAttendance(classIDs, dateStrings);
         const dayResults = dateStrings.map(dateString => {
           const classResults = results.filter(r => r.date === dateString);
           const present = classResults.reduce((acc, curr) => acc + curr.present, 0);
@@ -491,28 +525,31 @@ export default function ReportsPage() {
   };
 
   const handleDayClick = async (day: WeeklyData) => {
+    console.log('handleDayClick called with:', day);
     setSelectedDay(day.day);
     setLoadingDayClasses(true);
     setDayClasses([]);
     
     try {
-      // Find the corresponding date for this day
-      const dayIndex = weeklyData.findIndex(d => d.day === day.day);
-      if (dayIndex === -1) return;
+      // Use the date directly from the day object
+      const dateString = day.date;
+      console.log('Fetching data for date:', dateString);
       
-      const weekDates = getWeekDates(selectedWeek);
-      const date = weekDates[dayIndex];
-      const yyyymmdd = formatDate(date);
+      const results = await AttendanceDataService.fetchBulkAttendance(classIDs, [dateString]);
+      console.log('Results for day click:', results);
       
-      const results = await AttendanceDataService.fetchBulkAttendance(classIDs, [yyyymmdd]);
-      setDayClasses(results.map(r => ({
+      // Map results to match the expected ClassAttendance interface
+      const mappedResults = results.map(r => ({
         classId: r.classId,
         present: r.present,
         absent: r.absent,
         leave: r.leave,
         total: r.total,
         percentage: r.percentage
-      })));
+      }));
+      
+      console.log('Mapped results:', mappedResults);
+      setDayClasses(mappedResults);
     } catch (error) {
       console.error('Error fetching day classes:', error);
       setDayClasses([]);
@@ -522,12 +559,14 @@ export default function ReportsPage() {
   };
 
   const handleClassClickForSpecificDay = async (classId: string, date: string) => {
+    console.log('handleClassClickForSpecificDay called with:', { classId, date });
     setSelectedClass(classId);
     setLoadingStudents(true);
     setSelectedDay(null); // Close the day dialog
     
     try {
       const result = await AttendanceDataService.fetchClassAttendance(classId, date);
+      console.log('Student result:', result);
       setStudents(result.students);
     } catch (err) {
       console.error('Error fetching students:', err);
@@ -621,6 +660,8 @@ export default function ReportsPage() {
   const overallWeeklyPercent = validDays.length
     ? Math.round((validDays.reduce((sum, day) => sum + ((day.present / day.total) * 100), 0) / validDays.length) * 100) / 100
     : 0;
+
+
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
@@ -936,305 +977,304 @@ export default function ReportsPage() {
                 </TableContainer>
               )}
             </div>
-
-            {/* Month Details Dialog */}
-            <Dialog open={Boolean(selectedMonthDetails)} onClose={handleCloseMonthDialog} maxWidth="lg" fullWidth>
-              <DialogTitle>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Typography variant="h6">
-                    {selectedMonthDetails?.monthName} {selectedMonthDetails?.year} - Daily Attendance Details
-                  </Typography>
-                  <IconButton onClick={handleCloseMonthDialog}>
-                    <CloseIcon />
-                  </IconButton>
-                </div>
-              </DialogTitle>
-              <DialogContent>
-                <div style={{ marginBottom: 16 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Overall Attendance: {selectedMonthDetails?.percentage.toFixed(2)}% | 
-                    Total Days: {selectedMonthDetails?.totalDays} | 
-                    Present Days: {selectedMonthDetails?.presentDays}
-                  </Typography>
-                </div>
-                {loadingMonthDetails ? (
-                  <div style={{ textAlign: 'center', padding: '40px' }}>
-                    <Typography variant="body1" color="text.secondary">
-                      Loading daily details...
-                    </Typography>
-                  </div>
-                ) : (
-                  <div>
-                    {monthDetailsData.map((day) => (
-                      <div key={day.date} style={{ marginBottom: 16, border: '1px solid #e0e0e0', borderRadius: 8 }}>
-                        {/* Day Summary Row - Clickable */}
-                        <div 
-                          style={{ 
-                            background: '#f5f5f5', 
-                            padding: 16, 
-                            borderBottom: '1px solid #e0e0e0',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            cursor: 'pointer'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e8e8e8'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-                          onClick={() => handleDateClick(day.date)}
-                        >
-                          <Typography variant="h6" fontWeight="bold">
-                            {day.date} {/* Optionally, format for display: dayjs(day.date).format('DD MMM YYYY (dddd)') */}
-                          </Typography>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                            <Chip label={`Present: ${day.present}`} color="success" size="small" />
-                            <Chip label={`Absent: ${day.absent}`} color="error" size="small" />
-                            <Chip label={`Leave: ${day.leave}`} color="info" size="small" />
-                            <Chip 
-                              label={`${day.percentage.toFixed(2)}%`}
-                              color={day.percentage >= 90 ? 'success' : day.percentage >= 80 ? 'warning' : 'error'}
-                              size="small"
-                            />
-                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                              Click to view class details
-                            </Typography>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={handleCloseMonthDialog}>Close</Button>
-              </DialogActions>
-            </Dialog>
-
-            {/* Date Details Dialog */}
-            <Dialog open={Boolean(selectedDateDetails)} onClose={handleCloseDateDialog} maxWidth="lg" fullWidth>
-              <DialogTitle>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Typography variant="h6">
-                    {selectedDateDetails?.date ? dayjs(selectedDateDetails.date).format('DD MMM YYYY (dddd)') : ''} - {selectedClassForDate ? `${selectedClassForDate} Students` : 'Class Overview'}
-                  </Typography>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {selectedClassForDate && (
-                      <Button 
-                        variant="outlined" 
-                        size="small" 
-                        onClick={handleBackToClasses}
-                        startIcon={<ArrowBackIcon />}
-                      >
-                        Back to Classes
-                      </Button>
-                    )}
-                    <IconButton onClick={handleCloseDateDialog}>
-                      <CloseIcon />
-                    </IconButton>
-                  </div>
-                </div>
-              </DialogTitle>
-              <DialogContent>
-                {loadingDateDetails ? (
-                  <div style={{ textAlign: 'center', padding: '40px' }}>
-                    <Typography variant="body1" color="text.secondary">
-                      Loading details...
-                    </Typography>
-                  </div>
-                ) : selectedClassForDate ? (
-                  // Show students for selected class
-                  <div>
-                    {(() => {
-                      const classData = selectedDateDetails?.classes.find(c => c.classId === selectedClassForDate);
-                      if (!classData) return null;
-                      
-                      return (
-                        <div>
-                          <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
-                            <Typography variant="h6" fontWeight="bold" gutterBottom>
-                              {selectedClassForDate} - Summary
-                            </Typography>
-                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                              <Chip label={`Present: ${classData.present}`} color="success" size="small" />
-                              <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
-                              <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
-                              <Chip 
-                                label={`${classData.percentage.toFixed(2)}%`}
-                                color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
-                                size="small"
-                              />
-                            </div>
-                          </div>
-                          
-                          {classData.students.length > 0 ? (
-                            <List>
-                              {classData.students.map((student) => (
-                                <ListItem key={student.id} divider>
-                                  <ListItemIcon>
-                                    {getStatusIcon(student.status)}
-                                  </ListItemIcon>
-                                  <ListItemText 
-                                    primary={student.name}
-                                    secondary={`Student ID: ${student.id}`}
-                                  />
-                                  <Chip 
-                                    label={student.status.toUpperCase()} 
-                                    color={getStatusColor(student.status)}
-                                    size="small"
-                                  />
-                                </ListItem>
-                              ))}
-                            </List>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
-                              No students found for this class on the selected date.
-                            </Typography>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  // Show class overview
-                  <div>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Click on a class to view individual student details
-                    </Typography>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      {(() => {
-                        return selectedDateDetails?.classes.map((classData) => (
-                          <Card 
-                            key={classData.classId} 
-                            sx={{ 
-                              width: '100%',
-                              cursor: 'pointer',
-                              '&:hover': {
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                transform: 'translateY(-2px)'
-                              },
-                              transition: 'all 0.2s ease'
-                            }}
-                            onClick={() => handleClassClickForDate(classData.classId)}
-                          >
-                            <CardContent>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <Typography variant="h6" fontWeight="bold">{classData.classId}</Typography>
-                                <Chip 
-                                  label={`${classData.percentage.toFixed(2)}%`}
-                                  color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
-                                  size="small"
-                                />
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                                <Chip label={`Present: ${classData.present}`} color="success" size="small" />
-                                <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
-                                <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
-                              </div>
-                              <Typography variant="body2" color="text.secondary">
-                                Total: {classData.total} students
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={handleCloseDateDialog}>Close</Button>
-              </DialogActions>
-            </Dialog>
-
-            {/* Day Classes Dialog */}
-            <Dialog open={Boolean(selectedDay)} onClose={handleCloseDayDialog} maxWidth="lg" fullWidth>
-              <DialogTitle>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Typography variant="h6">
-                    {selectedDay} - Class Overview
-                  </Typography>
-                  <IconButton onClick={handleCloseDayDialog}>
-                    <CloseIcon />
-                  </IconButton>
-                </div>
-              </DialogTitle>
-              <DialogContent>
-                {loadingDayClasses ? (
-                  <div style={{ textAlign: 'center', padding: '40px' }}>
-                    <Typography variant="body1" color="text.secondary">
-                      Loading class data...
-                    </Typography>
-                  </div>
-                ) : (
-                  <div>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Click on a class to view individual student details for {selectedDay}
-                    </Typography>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                      {dayClasses.map((classData) => (
-                        <Card 
-                          key={classData.classId} 
-                          sx={{ 
-                            width: '100%',
-                            cursor: classData.total > 0 ? 'pointer' : 'default',
-                            opacity: classData.total > 0 ? 1 : 0.6,
-                            '&:hover': classData.total > 0 ? {
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                              transform: 'translateY(-2px)'
-                            } : {},
-                            transition: 'all 0.2s ease'
-                          }}
-                          onClick={() => {
-                            if (classData.total > 0) {
-                              // Find the corresponding date for this day
-                              const dayIndex = weeklyData.findIndex(d => d.day === selectedDay);
-                              if (dayIndex !== -1) {
-                                const weekDates = getWeekDates(selectedWeek);
-                                const date = weekDates[dayIndex];
-                                const yyyymmdd = formatDate(date);
-                                handleClassClickForSpecificDay(classData.classId, yyyymmdd);
-                              }
-                            }
-                          }}
-                        >
-                          <CardContent>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                              <Typography variant="h6" fontWeight="bold">{classData.classId}</Typography>
-                              <Chip 
-                                label={`${classData.percentage.toFixed(2)}%`}
-                                color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
-                                size="small"
-                              />
-                            </div>
-                            {classData.total > 0 ? (
-                              <>
-                                <div style={{ display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                                  <Chip label={`Present: ${classData.present}`} color="success" size="small" />
-                                  <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
-                                  <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
-                                </div>
-                                <Typography variant="body2" color="text.secondary">
-                                  Total: {classData.total} students
-                                </Typography>
-                              </>
-                            ) : (
-                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                No attendance records for this class on {selectedDay}
-                              </Typography>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={handleCloseDayDialog}>Close</Button>
-              </DialogActions>
-            </Dialog>
           </>
         )}
       </div>
+
+      {/* ALL DIALOGS - MOVED OUTSIDE OF TAB CONDITIONAL RENDERING */}
+
+      {/* Day Classes Dialog */}
+      <Dialog open={Boolean(selectedDay)} onClose={handleCloseDayDialog} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              {selectedDay} - Class Overview
+            </Typography>
+            <IconButton onClick={handleCloseDayDialog}>
+              <CloseIcon />
+            </IconButton>
+          </div>
+        </DialogTitle>
+        <DialogContent>
+          {loadingDayClasses ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Typography variant="body1" color="text.secondary">
+                Loading class data...
+              </Typography>
+            </div>
+          ) : (
+            <div>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Click on a class to view individual student details for {selectedDay}
+              </Typography>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {dayClasses.map((classData) => (
+                  <Card 
+                    key={classData.classId} 
+                    sx={{ 
+                      width: '100%',
+                      cursor: classData.total > 0 ? 'pointer' : 'default',
+                      opacity: classData.total > 0 ? 1 : 0.6,
+                      '&:hover': classData.total > 0 ? {
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                        transform: 'translateY(-2px)'
+                      } : {},
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => {
+                      if (classData.total > 0) {
+                        // Use the date directly from the day object
+                        const dayData = weeklyData.find(d => d.day === selectedDay);
+                        if (dayData) {
+                          handleClassClickForSpecificDay(classData.classId, dayData.date);
+                        }
+                      }
+                    }}
+                  >
+                    <CardContent>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Typography variant="h6" fontWeight="bold">{classData.classId}</Typography>
+                        <Chip 
+                          label={`${classData.percentage.toFixed(2)}%`}
+                          color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
+                          size="small"
+                        />
+                      </div>
+                      {classData.total > 0 ? (
+                        <>
+                          <div style={{ display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                            <Chip label={`Present: ${classData.present}`} color="success" size="small" />
+                            <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
+                            <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
+                          </div>
+                          <Typography variant="body2" color="text.secondary">
+                            Total: {classData.total} students
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          No attendance records for this class on {selectedDay}
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDayDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Month Details Dialog */}
+      <Dialog open={Boolean(selectedMonthDetails)} onClose={handleCloseMonthDialog} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              {selectedMonthDetails?.monthName} {selectedMonthDetails?.year} - Daily Attendance Details
+            </Typography>
+            <IconButton onClick={handleCloseMonthDialog}>
+              <CloseIcon />
+            </IconButton>
+          </div>
+        </DialogTitle>
+        <DialogContent>
+          <div style={{ marginBottom: 16 }}>
+            <Typography variant="body2" color="text.secondary">
+              Overall Attendance: {selectedMonthDetails?.percentage.toFixed(2)}% | 
+              Total Days: {selectedMonthDetails?.totalDays} | 
+              Present Days: {selectedMonthDetails?.presentDays}
+            </Typography>
+          </div>
+          {loadingMonthDetails ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Typography variant="body1" color="text.secondary">
+                Loading daily details...
+              </Typography>
+            </div>
+          ) : (
+            <div>
+              {monthDetailsData.map((day) => (
+                <div key={day.date} style={{ marginBottom: 16, border: '1px solid #e0e0e0', borderRadius: 8 }}>
+                  {/* Day Summary Row - Clickable */}
+                  <div 
+                    style={{ 
+                      background: '#f5f5f5', 
+                      padding: 16, 
+                      borderBottom: '1px solid #e0e0e0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e8e8e8'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+                    onClick={() => handleDateClick(day.date)}
+                  >
+                    <Typography variant="h6" fontWeight="bold">
+                      {day.date} {/* Optionally, format for display: dayjs(day.date).format('DD MMM YYYY (dddd)') */}
+                    </Typography>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <Chip label={`Present: ${day.present}`} color="success" size="small" />
+                      <Chip label={`Absent: ${day.absent}`} color="error" size="small" />
+                      <Chip label={`Leave: ${day.leave}`} color="info" size="small" />
+                      <Chip 
+                        label={`${day.percentage.toFixed(2)}%`}
+                        color={day.percentage >= 90 ? 'success' : day.percentage >= 80 ? 'warning' : 'error'}
+                        size="small"
+                      />
+                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        Click to view class details
+                      </Typography>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseMonthDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Date Details Dialog */}
+      <Dialog open={Boolean(selectedDateDetails)} onClose={handleCloseDateDialog} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              {selectedDateDetails?.date ? dayjs(selectedDateDetails.date).format('DD MMM YYYY (dddd)') : ''} - {selectedClassForDate ? `${selectedClassForDate} Students` : 'Class Overview'}
+            </Typography>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {selectedClassForDate && (
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  onClick={handleBackToClasses}
+                  startIcon={<ArrowBackIcon />}
+                >
+                  Back to Classes
+                </Button>
+              )}
+              <IconButton onClick={handleCloseDateDialog}>
+                <CloseIcon />
+              </IconButton>
+            </div>
+          </div>
+        </DialogTitle>
+        <DialogContent>
+          {loadingDateDetails ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Typography variant="body1" color="text.secondary">
+                Loading details...
+              </Typography>
+            </div>
+          ) : selectedClassForDate ? (
+            // Show students for selected class
+            <div>
+              {(() => {
+                const classData = selectedDateDetails?.classes.find(c => c.classId === selectedClassForDate);
+                if (!classData) return null;
+                
+                return (
+                  <div>
+                    <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+                      <Typography variant="h6" fontWeight="bold" gutterBottom>
+                        {selectedClassForDate} - Summary
+                      </Typography>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <Chip label={`Present: ${classData.present}`} color="success" size="small" />
+                        <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
+                        <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
+                        <Chip 
+                          label={`${classData.percentage.toFixed(2)}%`}
+                          color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
+                          size="small"
+                        />
+                      </div>
+                    </div>
+                    
+                    {classData.students.length > 0 ? (
+                      <List>
+                        {classData.students.map((student) => (
+                          <ListItem key={student.id} divider>
+                            <ListItemIcon>
+                              {getStatusIcon(student.status)}
+                            </ListItemIcon>
+                            <ListItemText 
+                              primary={student.name}
+                              secondary={`Student ID: ${student.id}`}
+                            />
+                            <Chip 
+                              label={student.status.toUpperCase()} 
+                              color={getStatusColor(student.status)}
+                              size="small"
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                        No students found for this class on the selected date.
+                      </Typography>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            // Show class overview
+            <div>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Click on a class to view individual student details
+              </Typography>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {(() => {
+                  return selectedDateDetails?.classes.map((classData) => (
+                    <Card 
+                      key={classData.classId} 
+                      sx={{ 
+                        width: '100%',
+                        cursor: 'pointer',
+                        '&:hover': {
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          transform: 'translateY(-2px)'
+                        },
+                        transition: 'all 0.2s ease'
+                      }}
+                      onClick={() => handleClassClickForDate(classData.classId)}
+                    >
+                      <CardContent>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <Typography variant="h6" fontWeight="bold">{classData.classId}</Typography>
+                          <Chip 
+                            label={`${classData.percentage.toFixed(2)}%`}
+                            color={classData.percentage >= 90 ? 'success' : classData.percentage >= 80 ? 'warning' : 'error'}
+                            size="small"
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                          <Chip label={`Present: ${classData.present}`} color="success" size="small" />
+                          <Chip label={`Absent: ${classData.absent}`} color="error" size="small" />
+                          <Chip label={`Leave: ${classData.leave}`} color="info" size="small" />
+                        </div>
+                        <Typography variant="body2" color="text.secondary">
+                          Total: {classData.total} students
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDateDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Student Details Dialog */}
       <Dialog open={Boolean(selectedClass)} onClose={handleCloseDialog} maxWidth="md" fullWidth>

@@ -10,8 +10,9 @@ import SaveIcon from "@mui/icons-material/Save"
 import GroupIcon from "@mui/icons-material/Group"
 import { Link } from "react-router-dom"
 import { db } from "../firebase"
-import { collection, getDocs, doc, setDoc } from "firebase/firestore"
+import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore"
 import "./TakeAttendance.css"
+import AttendanceDataService from './attendanceService'
 import { DatePicker } from '@mui/x-date-pickers/DatePicker'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -130,19 +131,42 @@ export default function AttendancePage() {
         return;
       }
       const dateString = selectedDate.format('YYYY-MM-DD');
-      const attendanceCol = collection(db, "attendance", selectedClass, dateString);
-      const snapshot = await getDocs(attendanceCol);
-      if (!snapshot.empty) {
-        // Attendance exists, pre-fill
-        const att: Record<string, "present" | "absent" | "on leave"> = {};
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          att[data.studentId] = data.status;
-        });
-        setAttendance(att);
-        setOriginalAttendance(att);
-        setAttendanceExists(true);
-      } else {
+      const monthString = selectedDate.format('YYYY-MM');
+      
+      // Clear cache for this class and date to ensure fresh data
+      AttendanceDataService.clearCacheForClass(selectedClass, dateString);
+      
+      try {
+        // Fetch from the new structure: attendance/{classId}/months/{year-month}
+        const monthlyDocRef = doc(db, "attendance", selectedClass, "months", monthString);
+        const monthlyDoc = await getDoc(monthlyDocRef);
+        
+        if (monthlyDoc.exists()) {
+          const data = monthlyDoc.data();
+          const dayData = data[dateString];
+          
+          if (dayData) {
+            // Attendance exists, pre-fill
+            const att: Record<string, "present" | "absent" | "on leave"> = {};
+            Object.entries(dayData).forEach(([studentId, studentData]) => {
+              const data = studentData as { status: string; name: string; note?: string };
+              att[studentId] = data.status as "present" | "absent" | "on leave";
+            });
+            setAttendance(att);
+            setOriginalAttendance(att);
+            setAttendanceExists(true);
+          } else {
+            setAttendance({});
+            setOriginalAttendance({});
+            setAttendanceExists(false);
+          }
+        } else {
+          setAttendance({});
+          setOriginalAttendance({});
+          setAttendanceExists(false);
+        }
+      } catch (error) {
+        console.error("Error fetching existing attendance:", error);
         setAttendance({});
         setOriginalAttendance({});
         setAttendanceExists(false);
@@ -163,30 +187,32 @@ export default function AttendancePage() {
     try {
       // Use selected date in yyyy-mm-dd format
       const dateString = selectedDate.format('YYYY-MM-DD');
+      const monthString = selectedDate.format('YYYY-MM'); // For the 'months' sub-collection
       
       // Save attendance for each student
-      const savePromises = Object.entries(attendance).map(async ([studentId, status]) => {
-        const student = students.find(s => s.id === studentId)
-        if (!student) return
+      const attendanceForDay: Record<string, { status: string; name: string; note: string; timestamp: string }> = {};
+      Object.entries(attendance).forEach(([studentId, status]) => {
+        const student = students.find(s => s.id === studentId);
+        if (student) {
+          attendanceForDay[studentId] = {
+            status,
+            name: student.name,
+            note: '', // Add note field, default to empty string
+            timestamp: selectedDate.toISOString()
+          };
+        }
+      });
+      await setDoc(
+        doc(db, "attendance", selectedClass, "months", monthString),
+        {
+          [dateString]: attendanceForDay
+        },
+        { merge: true }
+      );
       
-        
-        console.log("Saving to path:", `attendance/${selectedClass}/${dateString}/${studentId}`)
-
-       const studentDocRef = doc(
-          db,
-          "attendance",
-          selectedClass,   // "3Y" (collection)
-          dateString,      // "2025-07-02" (collection)
-          studentId        // doc
-        );
-        await setDoc(studentDocRef, {
-          studentId: studentId,
-          name: student.name,
-          status: status,
-          timestamp: selectedDate.toISOString()
-        })
-      })
-      await Promise.all(savePromises)
+      // Clear cache for this class and month to ensure fresh data
+      AttendanceDataService.clearCacheForMonth(selectedClass, monthString);
+      
       alert("Attendance saved successfully!")
       
       // Reset attendance after saving
