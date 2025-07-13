@@ -47,6 +47,7 @@ export default function AttendancePage() {
     if (today.day() === 6) return today.add(2, 'day'); // Saturday -> Monday
     return today;
   });
+  const [isWeekend, setIsWeekend] = useState(false);
   const [attendanceExists, setAttendanceExists] = useState(false);
   const [originalAttendance, setOriginalAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({});
 
@@ -256,14 +257,24 @@ export default function AttendancePage() {
     <div style={{ minHeight: "100vh" }}>
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
-          <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
-            Back
-          </Button>
-          <div>
-            <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
-            <Typography color="textSecondary">
-              Mark attendance for selected date
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
+              Back
+            </Button>
+            <div>
+              <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
+              <Typography color="textSecondary">
+                Mark attendance for selected date
+              </Typography>
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <Typography variant="h6" fontWeight="bold" color="primary">
+              {selectedDate.format('dddd, MMMM D, YYYY')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {isWeekend ? "Weekend - No School" : "School Day"}
             </Typography>
           </div>
         </div>
@@ -274,8 +285,14 @@ export default function AttendancePage() {
               label="Select Date"
               value={selectedDate}
               onChange={(newValue) => {
-                if (newValue && newValue.day() !== 0 && newValue.day() !== 6) {
-                  setSelectedDate(newValue);
+                if (newValue) {
+                  const dayOfWeek = newValue.day();
+                  if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    setSelectedDate(newValue);
+                    setIsWeekend(false);
+                  } else {
+                    setIsWeekend(true);
+                  }
                 }
               }}
               shouldDisableDate={(date) => {
@@ -288,11 +305,16 @@ export default function AttendancePage() {
                   variant: "outlined",
                   size: "small",
                   sx: { minWidth: 200 },
-                  helperText: "Only weekdays (Monday to Friday) are available"
+                  helperText: isWeekend ? "Weekends are not available for attendance" : "Only weekdays (Monday to Friday) are available"
                 }
               }}
             />
           </LocalizationProvider>
+          {isWeekend && (
+            <Typography variant="body2" color="warning.main" style={{ marginTop: 8 }}>
+              ⚠️ School is closed on weekends. Please select a weekday to take attendance.
+            </Typography>
+          )}
         </div>
 
         {/* Class Selection */}
@@ -473,13 +495,16 @@ export default function AttendancePage() {
                     isSaving ||
                     students.length === 0 ||
                     Object.keys(attendance).length !== students.length ||
-                    (attendanceExists && !isAttendanceModified())
+                    (attendanceExists && !isAttendanceModified()) ||
+                    isWeekend
                   }
                   startIcon={<SaveIcon />}
                   variant="contained"
                   color="primary"
                 >
-                  {isSaving
+                  {isWeekend 
+                    ? "Cannot Save on Weekend"
+                    : isSaving
                     ? (attendanceExists ? "Updating..." : "Saving...")
                     : (attendanceExists ? "Update Attendance" : "Save Attendance")}
                 </Button>

@@ -7,8 +7,6 @@ import {
   Typography,
   Box,
   Button,
-  Tabs,
-  Tab,
   Divider,
   Card,
   CardContent,
@@ -103,17 +101,7 @@ function isWeekday(date: Date): boolean {
   return dayOfWeek >= 1 && dayOfWeek <= 5; // Monday = 1, Tuesday = 2, ..., Friday = 5
 }
 
-// Utility: Get next weekday from a given date
-function getNextWeekday(date: Date): Date {
-  const nextDay = new Date(date);
-  nextDay.setDate(date.getDate() + 1);
-  
-  while (!isWeekday(nextDay)) {
-    nextDay.setDate(nextDay.getDate() + 1);
-  }
-  
-  return nextDay;
-}
+
 
 // Types for attendance data
 interface WeeklyData {
@@ -155,15 +143,7 @@ interface MonthSummary {
 export default function ReportsPage() {
   const [tab, setTab] = useState(0)
   const [selectedDate, setSelectedDate] = useState<Dayjs>(() => {
-    const today = new Date();
-    // Ensure the initial date is a weekday
-    if (isWeekday(today)) {
-      return dayjs(today);
-    } else {
-      // If today is weekend, select the next weekday
-      const nextWeekday = getNextWeekday(today);
-      return dayjs(nextWeekday);
-    }
+    return dayjs(new Date());
   });
   const [selectedWeek, setSelectedWeek] = useState(() => {
     const today = new Date();
@@ -685,12 +665,54 @@ export default function ReportsPage() {
 
       <div style={{ maxWidth: 'var(--mui-max-width-lg, 1200px)', margin: '0 auto' }}>
         {/* Tabs */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth">
-            <Tab label="Daily Report" />
-            <Tab label="Weekly Report" />
-            <Tab label="Monthly Report" />
-          </Tabs>
+        <Box sx={{ mb: 4 }}>
+          <div style={{ 
+            display: 'flex', 
+            background: '#f8f9fa', 
+            borderRadius: 12, 
+            padding: 4,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          }}>
+            {[
+              { label: "Daily Report", icon: "📅"},
+              { label: "Weekly Report", icon: "📊"  },
+              { label: "Monthly Report", icon: "📈"}
+            ].map((tabInfo, index) => (
+              <div
+                key={index}
+                onClick={() => setTab(index)}
+                style={{
+                  flex: 1,
+                  padding: '16px 24px',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.3s ease',
+                  background: tab === index ? '#fff' : 'transparent',
+                  boxShadow: tab === index ? '0 4px 12px rgba(0,0,0,0.1)' : 'none',
+                  border: tab === index ? '1px solid #e0e0e0' : 'none',
+                  transform: tab === index ? 'translateY(-2px)' : 'none'
+                }}
+              >
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>
+                  {tabInfo.icon}
+                </div>
+                <Typography 
+                  variant="h6" 
+                  fontWeight="bold"
+                  color={tab === index ? 'primary.main' : 'text.secondary'}
+                >
+                  {tabInfo.label}
+                </Typography>
+                <Typography 
+                  variant="body2" 
+                  color={tab === index ? 'text.primary' : 'text.secondary'}
+                  style={{ marginTop: '4px' }}
+                >
+                </Typography>
+              </div>
+            ))}
+          </div>
         </Box>
 
         {/* Daily Report */}
@@ -704,20 +726,33 @@ export default function ReportsPage() {
                 <DatePicker
                   value={selectedDate}
                   onChange={(newValue) => {
-                    if (newValue && isWeekday(newValue.toDate())) {
+                    if (newValue) {
                       setSelectedDate(newValue);
                     }
                   }}
-                  shouldDisableDate={(date) => {
-                    // Disable weekends (Saturday = 6, Sunday = 0)
-                    const dayOfWeek = date.day();
-                    return dayOfWeek === 0 || dayOfWeek === 6;
-                  }}
-                  
                 />
               </LocalizationProvider>
+              
+            </div>
+              {/* Selected Date Display */}
+              <div style={{ background: '#f8f9fa', borderRadius: 8, padding: 16, marginBottom: 24, border: '1px solid #e9ecef' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  
+                  <Typography variant="h6" color="text.secondary">
+                    {selectedDate.format('dddd, MMMM D, YYYY')}
+                  </Typography>
+                  {!isWeekday(selectedDate.toDate()) && (
+                    <Typography variant="body2" color="warning.main" style={{ marginTop: 4 }}>
+                      ⚠️ Weekend - No School
+                    </Typography>
+                  )}
+                </div>
+              </div>
             </div>
             </div>
+
+          
 
             {/* Overall Stats */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, marginBottom: 24 }}>
@@ -727,8 +762,12 @@ export default function ReportsPage() {
                     <Typography variant="subtitle2">Overall Attendance</Typography>
                     <TrendingUpIcon color="success" />
                   </div>
-                  <Typography variant="h4" fontWeight="bold">{loadingDaily ? '--' : `${dailyStats.percent.toFixed(2)}%`}</Typography>
-                  <Typography variant="body2" color="success.main">{loadingDaily ? '' : `Present: ${dailyStats.present}`}</Typography>
+                  <Typography variant="h4" fontWeight="bold">
+                    {!isWeekday(selectedDate.toDate()) ? '--' : loadingDaily ? '--' : `${dailyStats.percent.toFixed(2)}%`}
+                  </Typography>
+                  <Typography variant="body2" color="success.main">
+                    {!isWeekday(selectedDate.toDate()) ? 'No school on weekends' : loadingDaily ? '' : `Present: ${dailyStats.present}`}
+                  </Typography>
                 </div>
               </div>
               <div style={{ flex: '1 1 300px', minWidth: 0, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: 24 }}>
@@ -737,8 +776,12 @@ export default function ReportsPage() {
                     <Typography variant="subtitle2">Total Present</Typography>
                     <CalendarMonthIcon color="primary" />
                   </div>
-                  <Typography variant="h4" fontWeight="bold">{loadingDaily ? '--' : dailyStats.present}</Typography>
-                  <Typography variant="body2" color="text.secondary">out of {loadingDaily ? '--' : dailyStats.total} students</Typography>
+                  <Typography variant="h4" fontWeight="bold">
+                    {!isWeekday(selectedDate.toDate()) ? '--' : loadingDaily ? '--' : dailyStats.present}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {!isWeekday(selectedDate.toDate()) ? 'No school on weekends' : `out of ${loadingDaily ? '--' : dailyStats.total} students`}
+                  </Typography>
                 </div>
               </div>
               <div style={{ flex: '1 1 300px', minWidth: 0, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: 24 }}>
@@ -747,8 +790,12 @@ export default function ReportsPage() {
                     <Typography variant="subtitle2">Total Absent</Typography>
                     <TrendingDownIcon color="error" />
                   </div>
-                  <Typography variant="h4" fontWeight="bold">{loadingDaily ? '--' : dailyStats.absent}</Typography>
-                  <Typography variant="body2" color="error.main">{loadingDaily ? '' : `${dailyStats.total ? ((dailyStats.absent / dailyStats.total) * 100).toFixed(2) : 0}% of total`}</Typography>
+                  <Typography variant="h4" fontWeight="bold">
+                    {!isWeekday(selectedDate.toDate()) ? '--' : loadingDaily ? '--' : dailyStats.absent}
+                  </Typography>
+                  <Typography variant="body2" color="error.main">
+                    {!isWeekday(selectedDate.toDate()) ? 'No school on weekends' : loadingDaily ? '' : `${dailyStats.total ? ((dailyStats.absent / dailyStats.total) * 100).toFixed(2) : 0}% of total`}
+                  </Typography>
                 </div>
               </div>
             </div>
@@ -756,11 +803,18 @@ export default function ReportsPage() {
             {/* Class-wise Attendance */}
             <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: 24, marginBottom: 24 }}>
               <div>
-                {/* <Typography variant="h6" fontWeight="bold" gutterBottom>Class-wise Attendance</Typography> */}
-                {/* <Typography variant="body2" color="text.secondary" gutterBottom>Click on a class to view individual student attendance</Typography>
-                <Divider sx={{ mb: 2 }} /> */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {classAttendance.map((classData) => (
+                {!isWeekday(selectedDate.toDate()) ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      Weekend - No Classes
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      School is closed on weekends. No attendance data available.
+                    </Typography>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {classAttendance.map((classData) => (
                     <Card 
                       key={classData.classId} 
                       sx={{ 
@@ -791,6 +845,7 @@ export default function ReportsPage() {
                     </Card>
                   ))}
                 </div>
+                )}
               </div>
             </div>
           </>
@@ -1114,7 +1169,7 @@ export default function ReportsPage() {
                     onClick={() => handleDateClick(day.date)}
                   >
                     <Typography variant="h6" fontWeight="bold">
-                      {day.date} {/* Optionally, format for display: dayjs(day.date).format('DD MMM YYYY (dddd)') */}
+                      {dayjs(day.date).format('DD MMM YYYY (dddd)')}
                     </Typography>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                       <Chip label={`Present: ${day.present}`} color="success" size="small" />
