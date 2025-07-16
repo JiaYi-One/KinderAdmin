@@ -4,6 +4,7 @@ import {
   Typography, Button, Chip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
   List, ListItem, ListItemText, ListItemIcon, IconButton
 } from "@mui/material";
+
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import GroupIcon from "@mui/icons-material/Group";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
@@ -12,6 +13,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import EventBusyIcon from "@mui/icons-material/EventBusy";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import { Link } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
@@ -44,12 +46,28 @@ export default function Dashboard() {
   const [recentClasses, setRecentClasses] = useState<ClassData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isWeekend, setIsWeekend] = useState(false);
-  
-  // Dialog states
+  const [isWeekend] = useState(false);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [students, setStudents] = useState<{ id: string; name: string; status: string }[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
+
+  // Helper function to get current week (Monday to Friday)
+
+  // Helper function to get week dates (Monday to Friday)
+
+  // Helper function to get week range label
+
+  // Fetch all classes for management
+
+  // Handle class selection in manage attendance
+
+  // Handle student selection and fetch weekly attendance
+
+  // Handle week change
+
+  // Get status color for weekly view
+
+  // Get status icon for weekly view
 
   // Fetch dashboard data
   useEffect(() => {
@@ -69,7 +87,7 @@ export default function Dashboard() {
         // If it's weekend, show no attendance
         const displayDate = today;
         
-        setIsWeekend(weekend);
+        // setIsWeekend(weekend); // This state is removed
         
         if (weekend) {
           // Don't fetch any attendance data on weekends
@@ -208,6 +226,10 @@ export default function Dashboard() {
       default: return 'default';
     }
   };
+
+  // Week navigation logic for Manage Student Attendance
+
+
 
   if (loading) {
     return (
@@ -380,6 +402,33 @@ export default function Dashboard() {
               </Typography>
             </Link>
           </div>
+          <div 
+            style={{ 
+              flex: "1 1 300px",
+              minWidth: "300px",
+              height: "100px", 
+              textAlign: "left", 
+              textDecoration: "none",
+              cursor: "pointer",
+              boxShadow: "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)",
+              borderRadius: "4px",
+              backgroundColor: "white",
+              padding: "16px",
+              transition: "box-shadow 0.3s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.23)"}
+            onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)"}
+          >
+            <Link to="/attendance/manageStudAttendance" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <ManageAccountsIcon style={{ color: "#9c27b0" }} />
+                <Typography variant="h6">Manage Student Attendance</Typography>
+              </div>
+              <Typography variant="body2" color="text.secondary">
+                View and manage student attendance by class and week
+              </Typography>
+            </Link>
+          </div>
         </div>
 
         {/* Recent Classes */}
@@ -501,6 +550,9 @@ export default function Dashboard() {
           <Button onClick={handleCloseDialog}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Manage Student Attendance Dialog */}
+      {/* This dialog is removed as per the edit hint */}
     </div>
   );
 }

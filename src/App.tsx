@@ -11,6 +11,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import AttendancePage from "./attendance/AttendanceMain";
 import TakeAttendance from "./attendance/TakeAttendance";
 import AttendanceReport from "./attendance/AttendanceReport";
+import ManageStudAttendance from "./attendance/manageStudAttendance";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -85,6 +86,10 @@ function App() {
         <Route 
           path="/attendance/AttendanceReport" 
           element={isAuthenticated ? <AttendanceReport /> : <Navigate to="/login" replace />} 
+        />
+         <Route 
+          path="/attendance/manageStudAttendance" 
+          element={isAuthenticated ? <ManageStudAttendance /> : <Navigate to="/login" replace />} 
         />
       </Routes>
     </>
