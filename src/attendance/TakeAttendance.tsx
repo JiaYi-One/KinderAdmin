@@ -254,30 +254,41 @@ export default function AttendancePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
+      {/* Back Button - Outside the main wrapper */}
+      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px" }}>
+        <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
+          Back
+        </Button>
+      </div>
+      
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
-              Back
-            </Button>
-            <div>
-              <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
-              <Typography color="textSecondary">
-                Mark attendance for selected date
+        <div style={{ 
+          background: "#fff", 
+          borderRadius: "12px", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+          padding: "32px",
+          minHeight: "calc(100vh - 48px)"
+        }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div>
+                <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
+                <Typography color="textSecondary">
+                  Mark attendance for selected date
+                </Typography>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <Typography variant="h6" fontWeight="bold" color="primary">
+                {selectedDate.format('dddd, MMMM D, YYYY')}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {isWeekend ? "Weekend - No School" : "School Day"}
               </Typography>
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <Typography variant="h6" fontWeight="bold" color="primary">
-              {selectedDate.format('dddd, MMMM D, YYYY')}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {isWeekend ? "Weekend - No School" : "School Day"}
-            </Typography>
-          </div>
-        </div>
         {/* Date Picker */}
         <div style={{ marginBottom: 24 }}>
           <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -512,6 +523,7 @@ export default function AttendancePage() {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   )

@@ -2,10 +2,7 @@
 
 import { useState, useEffect } from "react"
 import {
-  AppBar,
-  Toolbar,
   Typography,
-  Box,
   Button,
   Divider,
   Card,
@@ -644,28 +641,35 @@ export default function ReportsPage() {
 
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      {/* Header */}
-      <AppBar position="static" color="transparent" elevation={0} sx={{ mb: 4 }}>
-        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, md: 6 } }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Button component={Link} to="/" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
-              Back
-            </Button>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
+      {/* Back Button - Outside the main wrapper */}
+      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px" }}>
+        <Button component={Link} to="/" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
+          Back
+        </Button>
+      </div>
+      
+      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
+        <div style={{ 
+          background: "#fff", 
+          borderRadius: "12px", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+          padding: "32px",
+          minHeight: "calc(100vh - 48px)"
+        }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
             <div>
               <Typography variant="h4" fontWeight="bold">Attendance Reports</Typography>
               <Typography color="text.secondary">View detailed attendance analytics for all classes</Typography>
             </div>
+            <Button variant="contained" color="primary" startIcon={<DownloadIcon />}>
+              Export Report
+            </Button>
           </div>
-          <Button variant="contained" color="primary" startIcon={<DownloadIcon />}>
-            Export Report
-          </Button>
-        </Toolbar>
-      </AppBar>
 
-      <div style={{ maxWidth: 'var(--mui-max-width-lg, 1200px)', margin: '0 auto' }}>
-        {/* Tabs */}
-        <Box sx={{ mb: 4 }}>
+          {/* Tabs */}
+          <div style={{ marginBottom: "16px" }}>
           <div style={{ 
             display: 'flex', 
             background: '#f8f9fa', 
@@ -713,7 +717,7 @@ export default function ReportsPage() {
               </div>
             ))}
           </div>
-        </Box>
+        </div>
 
         {/* Daily Report */}
         {tab === 0 && (
@@ -964,7 +968,7 @@ export default function ReportsPage() {
             {/* Year Selector */}
             <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: 24, marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Typography variant="h6" fontWeight="bold">Select Academic Year</Typography>
+                <Typography variant="h6" fontWeight="bold">Select Year</Typography>
                 <TextField
                   type="number"
                   label="Year"
@@ -1034,6 +1038,7 @@ export default function ReportsPage() {
             </div>
           </>
         )}
+        </div>
       </div>
 
       {/* ALL DIALOGS - MOVED OUTSIDE OF TAB CONDITIONAL RENDERING */}
@@ -1376,6 +1381,6 @@ export default function ReportsPage() {
           <Button onClick={handleCloseDialog}>Close</Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </div>
   )
 }

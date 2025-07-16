@@ -226,16 +226,23 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
-        {/* Header */}
-        <div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          {/* <div>
-            <Typography variant="h3" fontWeight="bold" color="text.primary" style={{ marginBottom: "8px" }}>
+        <div style={{ 
+          background: "#fff", 
+          borderRadius: "12px", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+          padding: "32px",
+          minHeight: "calc(100vh - 48px)"
+        }}>
+          {/* Header */}
+          <div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Typography variant="h5" fontWeight="bold" color="text.primary" >
             Attendance Management System
             </Typography>
             <Typography color="text.secondary"></Typography>
-          </div> */}
+          </div>
           <div style={{ textAlign: "right" }}>
             <Typography variant="h6" fontWeight="bold" color="primary">
               {new Date().toLocaleDateString('en-US', { 
@@ -441,6 +448,7 @@ export default function Dashboard() {
               ))
             )}
           </div>
+        </div>
         </div>
       </div>
 
