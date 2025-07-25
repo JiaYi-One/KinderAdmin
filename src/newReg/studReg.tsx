@@ -1,7 +1,7 @@
 import React, { ChangeEvent, useState } from "react";
 import { Save, UserPlus, Receipt } from "lucide-react";
 import { db } from "../firebase";
-import { collection, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc, getDocs, getDoc, query, where } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -9,42 +9,267 @@ interface StudentForm {
   studentName: string;
   studentId: string;
   classId: string;
-  birthDate: string;
+  icNumber: string;
   age: string;
+  gender: string;
   address: string;
   parentId: string;
   parentName: string;
   parentPhone: string;
   parentEmail: string;
+  relationship: string;
 }
 
-function generateStudentId(): string {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const random = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(2, "0");
-  return `${year}K${random}`;
+async function generateUniqueStudentId(age: number): Promise<string> {
+  const currentYear = new Date().getFullYear().toString().slice(-2);
+  
+  // Determine age class (A)
+  let ageClass: string;
+  if (age <= 3) ageClass = "3";
+  else if (age === 4) ageClass = "4";
+  else if (age === 5) ageClass = "5";
+  else if (age === 6) ageClass = "6";
+  else ageClass = "3"; // Default for ages outside kindergarten range
+  
+  // Find the next available counter for this year and age class
+  const counter = await getNextCounter(currentYear, ageClass);
+  
+  // Format: YYK[A][3-digit-counter]
+  const studentId = `${currentYear}K${ageClass}${counter.toString().padStart(3, "0")}`;
+  
+  return studentId;
+}
+
+async function getNextCounter(year: string, ageClass: string): Promise<number> {
+  try {
+    // Query students collection for existing IDs with this year and age class
+    const studentsRef = collection(db, "students");
+    const querySnapshot = await getDocs(studentsRef);
+    
+    let maxCounter = 0;
+    const pattern = new RegExp(`^${year}K${ageClass}(\\d{3})$`);
+    
+    querySnapshot.docs.forEach(doc => {
+      const studentId = doc.id;
+      const match = studentId.match(pattern);
+      if (match) {
+        const counter = parseInt(match[1]);
+        if (counter > maxCounter) {
+          maxCounter = counter;
+        }
+      }
+    });
+    
+    // Return next counter (maxCounter + 1)
+    return maxCounter + 1;
+  } catch (error) {
+    console.error("Error getting next counter:", error);
+    return 1; // Start from 001 if error occurs
+  }
+}
+
+// Malaysian state codes for IC validation
+const STATE_CODES = {
+  '01': 'Johor', '21': 'Johor', '22': 'Johor', '23': 'Johor', '24': 'Johor',
+  '02': 'Kedah', '25': 'Kedah', '26': 'Kedah', '27': 'Kedah',
+  '03': 'Kelantan', '28': 'Kelantan', '29': 'Kelantan',
+  '04': 'Melaka', '30': 'Melaka',
+  '05': 'Negeri Sembilan', '31': 'Negeri Sembilan', '59': 'Negeri Sembilan',
+  '06': 'Pahang', '32': 'Pahang', '33': 'Pahang',
+  '07': 'Pulau Pinang', '34': 'Pulau Pinang', '35': 'Pulau Pinang',
+  '08': 'Perak', '36': 'Perak', '37': 'Perak', '38': 'Perak', '39': 'Perak',
+  '09': 'Perlis', '40': 'Perlis',
+  '10': 'Selangor', '41': 'Selangor', '42': 'Selangor', '43': 'Selangor', '44': 'Selangor',
+  '11': 'Terengganu', '45': 'Terengganu', '46': 'Terengganu',
+  '12': 'Sabah', '47': 'Sabah', '48': 'Sabah', '49': 'Sabah',
+  '13': 'Sarawak', '50': 'Sarawak', '51': 'Sarawak', '52': 'Sarawak', '53': 'Sarawak',
+  '14': 'Wilayah Persekutuan (Kuala Lumpur)', '54': 'Wilayah Persekutuan (Kuala Lumpur)', 
+  '55': 'Wilayah Persekutuan (Kuala Lumpur)', '56': 'Wilayah Persekutuan (Kuala Lumpur)', 
+  '57': 'Wilayah Persekutuan (Kuala Lumpur)',
+  '15': 'Wilayah Persekutuan (Labuan)', '58': 'Wilayah Persekutuan (Labuan)',
+  '16': 'Wilayah Persekutuan (Putrajaya)',
+  '82': 'Negeri Tidak Diketahui'
+};
+
+interface ICValidationResult {
+  isValid: boolean;
+  age: number;
+  gender: string;
+  state: string;
+  error?: string;
+}
+
+function validateICNumber(icNumber: string): ICValidationResult {
+  if (!icNumber || icNumber.length !== 14) {
+    return {
+      isValid: false,
+      age: 0,
+      gender: '',
+      state: '',
+      error: 'IC number must be 14 characters long (including hyphens)'
+    };
+  }
+
+  try {
+    // Remove hyphens and extract components
+    const cleanIC = icNumber.replace(/-/g, '');
+    if (cleanIC.length !== 12) {
+      return {
+        isValid: false,
+        age: 0,
+        gender: '',
+        state: '',
+        error: 'Invalid IC number format'
+      };
+    }
+    
+    // Extract components: YYMMDD-XX-XXXX
+    const year = parseInt(cleanIC.substring(0, 2));
+    const month = parseInt(cleanIC.substring(2, 4));
+    const day = parseInt(cleanIC.substring(4, 6));
+    const stateCode = cleanIC.substring(6, 8);
+    const lastDigit = parseInt(cleanIC.substring(11, 12));
+    
+    // 1. Validate date (must not be in the future)
+    const currentDate = new Date();
+    let fullYear = 2000 + year;
+    
+    // If year is greater than current year, assume it's 1900s
+    if (fullYear > currentDate.getFullYear()) {
+      fullYear = 1900 + year;
+    }
+    
+    const birthDate = new Date(fullYear, month - 1, day);
+    if (birthDate > currentDate) {
+      return {
+        isValid: false,
+        age: 0,
+        gender: '',
+        state: '',
+        error: 'Birth date cannot be in the future'
+      };
+    }
+    
+    // 2. Validate state code
+    if (!STATE_CODES[stateCode as keyof typeof STATE_CODES]) {
+      return {
+        isValid: false,
+        age: 0,
+        gender: '',
+        state: '',
+        error: 'Invalid state code in IC number'
+      };
+    }
+    
+    // 3. Determine gender from last digit
+    const gender = lastDigit % 2 === 1 ? 'Male' : 'Female';
+    
+    // 4. Calculate age
+    const age = currentDate.getFullYear() - birthDate.getFullYear();
+    
+    return {
+      isValid: true,
+      age: age,
+      gender: gender,
+      state: STATE_CODES[stateCode as keyof typeof STATE_CODES]
+    };
+    
+  } catch {
+    return {
+      isValid: false,
+      age: 0,
+      gender: '',
+      state: '',
+      error: 'Error processing IC number'
+    };
+  }
+}
+
+
+
+function getClassFromAge(age: number): string {
+  if (age <= 3) return "3Y";
+  if (age === 4) return "4Y";
+  if (age === 5) return "5Y";
+  if (age === 6) return "6Y";
+  return ""; // Return empty string if age doesn't match any class
+}
+
+function formatICNumber(value: string): string {
+  // Remove all non-digit characters
+  const digits = value.replace(/\D/g, '');
+  
+  // Format as YYMMDD-XX-XXXX
+  if (digits.length <= 6) {
+    return digits;
+  } else if (digits.length <= 8) {
+    return `${digits.substring(0, 6)}-${digits.substring(6)}`;
+  } else {
+    return `${digits.substring(0, 6)}-${digits.substring(6, 8)}-${digits.substring(8, 12)}`;
+  }
+}
+
+async function getChildrenNames(studentIds: string[]): Promise<string[]> {
+  if (studentIds.length === 0) return [];
+  
+  try {
+    const childrenNames: string[] = [];
+    
+    for (const studentId of studentIds) {
+      const studentDoc = await getDoc(doc(db, "students", studentId));
+      if (studentDoc.exists()) {
+        const studentData = studentDoc.data();
+        childrenNames.push(studentData.name || studentId);
+      }
+    }
+    
+    return childrenNames;
+  } catch (error) {
+    console.error("Error fetching children names:", error);
+    return [];
+  }
 }
 
 function StudReg() {
   const auth = getAuth();
-  const [formData, setFormData] = useState<StudentForm>(() => {
-    const studId = generateStudentId();
-    return {
-      studentName: "",
-      studentId: studId,
-      birthDate: "",
-      age: "",
-      classId: "",
-      address: "",
-      parentId: "P" + studId,
-      parentName: "",
-      parentPhone: "",
-      parentEmail: "",
-    };
+  const [formData, setFormData] = useState<StudentForm>({
+    studentName: "",
+    studentId: "",
+    icNumber: "",
+    age: "",
+    gender: "",
+    classId: "",
+    address: "",
+    parentId: "",
+    parentName: "",
+    parentPhone: "",
+    parentEmail: "",
+    relationship: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingParent, setExistingParent] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+    email: string;
+    student_id?: string[];
+    childrenNames?: string[];
+  } | null>(null);
+  const [showExistingParentInfo, setShowExistingParentInfo] = useState(false);
+  const [icError, setIcError] = useState<string>("");
+
+  // Initialize form with unique IDs
+  React.useEffect(() => {
+    const initializeForm = async () => {
+      const studId = await generateUniqueStudentId(0); // Default age 0 for initial load
+      setFormData(prev => ({
+        ...prev,
+        studentId: studId,
+        parentId: "P" + studId,
+      }));
+    };
+    initializeForm();
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -53,46 +278,170 @@ function StudReg() {
   ) => {
     const { name, value } = e.target;
 
-    // Student ID is now read-only, so we don't need to handle its changes
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    // Automatically calculate age when birthdate changes
-    if (name === "birthDate") {
-      const birthDate = new Date(value);
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-
-      if (
-        monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birthDate.getDate())
-      ) {
-        age--;
-      }
-
+    // Auto-format IC number with hyphens
+    if (name === "icNumber") {
+      const formattedValue = formatICNumber(value);
       setFormData((prev) => ({
         ...prev,
-        age: age.toString(),
+        [name]: formattedValue,
+      }));
+
+      // Validate IC number and extract information
+      const validation = validateICNumber(formattedValue);
+      
+      if (validation.isValid) {
+        setIcError("");
+        const selectedClass = getClassFromAge(validation.age);
+        
+        // Generate new student ID based on calculated age
+        const generateNewId = async () => {
+          const newStudId = await generateUniqueStudentId(validation.age);
+          setFormData((prev) => ({
+            ...prev,
+            age: validation.age.toString(),
+            gender: validation.gender,
+            classId: selectedClass,
+            studentId: newStudId,
+            parentId: "P" + newStudId,
+          }));
+        };
+        generateNewId();
+      } else {
+        setIcError(validation.error || "Invalid IC number");
+        setFormData((prev) => ({
+          ...prev,
+          age: "",
+          gender: "",
+          classId: "",
+        }));
+      }
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
       }));
     }
+
+    // Check for existing parent when parent info changes
+    if (name === "parentName" || name === "parentPhone" || name === "parentEmail") {
+      checkForExistingParent();
+    }
   };
-  const classArray = ["3Y", "4Y", "5Y", "6Y"]; // Class options
+
+  const checkForExistingParent = async () => {
+    const { parentName, parentPhone, parentEmail } = formData;
+    
+    // Only check if we have at least 2 fields filled
+    const filledFields = [parentName, parentPhone, parentEmail].filter(field => field.trim() !== '').length;
+    if (filledFields < 2) {
+      setExistingParent(null);
+      setShowExistingParentInfo(false);
+      return;
+    }
+
+    try {
+      // Query parents collection for matching parent
+      const parentsRef = collection(db, "parents");
+      let parentQuery;
+
+      // Try to find by email first (most unique)
+      if (parentEmail.trim()) {
+        parentQuery = query(parentsRef, where("email", "==", parentEmail.trim()));
+      } else if (parentPhone.trim()) {
+        // Then by phone
+        parentQuery = query(parentsRef, where("phone", "==", parentPhone.trim()));
+      } else if (parentName.trim()) {
+        // Finally by name
+        parentQuery = query(parentsRef, where("name", "==", parentName.trim()));
+      }
+
+      if (parentQuery) {
+        const querySnapshot = await getDocs(parentQuery);
+        
+        if (!querySnapshot.empty) {
+          const parentDoc = querySnapshot.docs[0];
+          const parentData = parentDoc.data();
+          
+          // Additional check: verify at least 2 fields match
+          const nameMatch = parentData.name === parentName.trim();
+          const phoneMatch = parentData.phone === parentPhone.trim();
+          const emailMatch = parentData.email === parentEmail.trim();
+          
+          const matchCount = [nameMatch, phoneMatch, emailMatch].filter(Boolean).length;
+          
+                               if (matchCount >= 2) {
+            // Fetch children names
+            const childrenNames = await getChildrenNames(parentData.student_id || []);
+            
+            setExistingParent({
+              id: parentDoc.id,
+              name: parentData.name,
+              phone: parentData.phone,
+              email: parentData.email,
+              student_id: parentData.student_id,
+              childrenNames: childrenNames
+            });
+            setShowExistingParentInfo(true);
+            return;
+          }
+        }
+      }
+      
+      setExistingParent(null);
+      setShowExistingParentInfo(false);
+    } catch (error) {
+      console.error("Error checking for existing parent:", error);
+    }
+  };
+
+  const useExistingParent = () => {
+    if (existingParent) {
+      setFormData(prev => ({
+        ...prev,
+        parentId: existingParent.id,
+        parentName: existingParent.name,
+        parentPhone: existingParent.phone,
+        parentEmail: existingParent.email,
+      }));
+      setShowExistingParentInfo(false);
+    }
+  };
+
+  const createNewParent = async () => {
+    const age = parseInt(formData.age) || 0;
+    const newStudId = await generateUniqueStudentId(age);
+    setFormData(prev => ({
+      ...prev,
+      parentId: "P" + newStudId,
+    }));
+    setExistingParent(null);
+    setShowExistingParentInfo(false);
+  };
+
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // Create parent authentication account
-      const defaultPassword = formData.parentId; // Using parent ID as default password
-      await createUserWithEmailAndPassword(
-        auth,
-        formData.parentEmail,
-        defaultPassword
-      );
+      let parentId = formData.parentId;
+      let isNewParent = false;
+
+      // If we have an existing parent, use it
+      if (existingParent && formData.parentId === existingParent.id) {
+        parentId = existingParent.id;
+        isNewParent = false;
+      } else {
+        // Create new parent authentication account
+        const defaultPassword = formData.parentId;
+        await createUserWithEmailAndPassword(
+          auth,
+          formData.parentEmail,
+          defaultPassword
+        );
+        isNewParent = true;
+      }
 
       // Create student document in students collection
       const studentDocRef = doc(
@@ -101,13 +450,16 @@ function StudReg() {
       );
       await setDoc(studentDocRef, {
         name: formData.studentName,
-        parentId: formData.parentId,
+        parentId: parentId,
         parentName: formData.parentName,
         parentEmail: formData.parentEmail,
         parentPhone: formData.parentPhone,
-        birthDate: formData.birthDate,
+        relationship: formData.relationship,
+        icNumber: formData.icNumber,
         age: formData.age,
+        gender: formData.gender,
         class_id: formData.classId,
+        address: formData.address,
       });
 
       // Create student document in class's student subcollection
@@ -117,45 +469,78 @@ function StudReg() {
       );
       await setDoc(classStudentRef, {
         name: formData.studentName,
-        parentId: formData.parentId,
+        studentID: formData.studentId,
+        parentId: parentId,
         parentName: formData.parentName,
         parentEmail: formData.parentEmail,
         parentPhone: formData.parentPhone,
-        birthDate: formData.birthDate,
+        relationship: formData.relationship,
+        icNumber: formData.icNumber,
         age: formData.age,
+        gender: formData.gender,
+        address: formData.address,
       });
 
-      // Create parent document
-      const parentDocRef = doc(collection(db, "parents"), formData.parentId);
-      await setDoc(
-        parentDocRef,
-        {
-          name: formData.parentName,
-          parentId: formData.parentId,
-          email: formData.parentEmail,
-          phone: formData.parentPhone,
-          student_id: [formData.studentId],
-          role: "parent", // Add role for authorization
-        },
-        { merge: true }
-      );
+      // Update parent document
+      const parentDocRef = doc(collection(db, "parents"), parentId);
+      
+      if (isNewParent) {
+        // Create new parent document
+        await setDoc(
+          parentDocRef,
+          {
+            name: formData.parentName,
+            parentId: parentId,
+            email: formData.parentEmail,
+            phone: formData.parentPhone,
+            student_id: [formData.studentId],
+            role: "parent",
+          },
+          { merge: true }
+        );
+      } else {
+                 // Update existing parent document to add new student
+         const parentDoc = await getDoc(parentDocRef);
+                 if (parentDoc.exists()) {
+          const parentData = parentDoc.data();
+          const existingStudentIds = parentData?.student_id || [];
+          
+          if (!existingStudentIds.includes(formData.studentId)) {
+            await setDoc(
+              parentDocRef,
+              {
+                student_id: [...existingStudentIds, formData.studentId],
+              },
+              { merge: true }
+            );
+          }
+        }
+      }
 
-      alert(`Registration successful! Parent login created with:\nEmail: ${formData.parentEmail}\nDefault Password: ${defaultPassword}\n\nPlease change your password after first login.`);
+      const successMessage = isNewParent 
+        ? `Registration successful! Parent login created with:\nEmail: ${formData.parentEmail}\nDefault Password: ${formData.parentId}\n\nPlease change your password after first login.`
+        : `Registration successful! Student ${formData.studentName} has been added to existing parent account.`;
+
+      alert(successMessage);
 
       // Reset form with new IDs
-      const newStudId = generateStudentId();
+      const newStudId = await generateUniqueStudentId(0); // Default age 0 for reset
       setFormData({
         studentName: "",
         studentId: newStudId,
-        birthDate: "",
+        icNumber: "",
         age: "",
+        gender: "",
         classId: "",
         parentId: "P" + newStudId,
         address: "",
         parentName: "",
         parentPhone: "",
         parentEmail: "",
+        relationship: "",
       });
+      setExistingParent(null);
+      setShowExistingParentInfo(false);
     } catch (error: unknown) {
       console.error("Error saving data:", error);
       if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
@@ -173,118 +558,76 @@ function StudReg() {
       <div className="container max-w-6xl">
         <main className="bg-white rounded shadow p-5">
           <div className="mb-4 d-flex align-items-center justify-content-between">
-            {" "}
-            {/* Bootstrap flexbox */}
             <div>
-              <h2 className="h3 fw-bold">New Student Registration</h2>{" "}
-              {/* Bootstrap heading */}
+              <h2 className="h3 fw-bold">New Student Registration</h2>
               <p className="text-muted mt-1">
                 Fill in the student's information below
               </p>
             </div>
-            <UserPlus className="w-8 h-8 text-primary" />{" "}
-            {/* Lucide icon with Bootstrap color */}
+            <UserPlus className="w-8 h-8 text-primary" />
           </div>
 
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <h3 className="h4 fw-semibold mb-3">Student Information</h3>{" "}
-              {/* Bootstrap heading */}
+              <h3 className="h4 fw-semibold mb-3">Student Information</h3>
               <div className="row g-3">
-                {" "}
-                {/* Bootstrap grid with gutters */}
-                <div className="col-md-6">
-                  {" "}
-                  {/* First column */}
+                <div className="col-md-4">
                   <label className="form-label" htmlFor="studentName">
                     Student Name
-                  </label>{" "}
-                  {/* Bootstrap label */}
+                  </label>
                   <input
                     type="text"
                     name="studentName"
                     value={formData.studentName}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
                       handleChange(e)
-                    } // Typed event
+                    }
                     className="form-control"
                     required
                     id="studentName"
                   />
                 </div>
-                <div className="col-md-6">
-                  {" "}
-                  {/* Second column */}
-                  <label className="form-label" htmlFor="studentId">
-                    Student ID
-                  </label>
-                  <div>
-                    <input
-                      type="text"
-                      name="studentId"
-                      value={formData.studentId}
-                      className="form-control bg-light"
-                      readOnly
-                      id="studentId"
-                    />
-                    <div className="form-text">Auto-generated ID</div>
-                  </div>
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label" htmlFor="birthDate">
-                    Birth Date
+
+                <div className="col-md-4">
+                  <label className="form-label" htmlFor="icNumber">
+                    Identity Card Number
                   </label>
                   <input
-                    type="date"
-                    name="birthDate"
-                    value={formData.birthDate}
+                    type="text"
+                    name="icNumber"
+                    value={formData.icNumber}
                     onChange={(e: ChangeEvent<HTMLInputElement>) =>
                       handleChange(e)
                     }
                     className="form-control"
+                    placeholder="YYMMDD-XX-XXXX"
+                    maxLength={14}
                     required
-                    id="birthDate"
+                    id="icNumber"
                   />
+                  <div className="form-text">Enter 14-digit IC number with hyphens (e.g., 150101-01-1234)</div>
+                  {icError && (
+                    <div className="form-text text-danger">{icError}</div>
+                  )}
                 </div>
-                <div className="col-md-6">
-                  <label className="form-label" htmlFor="age">
-                    Age
-                  </label>
-                  <input
-                    type="text"
-                    name="age"
-                    value={formData.age}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      handleChange(e)
-                    }
-                    className="form-control bg-light"
-                    readOnly
-                    id="age"
-                  />
-                </div>
-                <div className="col-md-6">
+
+                <div className="col-md-4">
                   <label className="form-label" htmlFor="classId">
                     Class
                   </label>
-                  <select
-                    name="classId"
-                    value={formData.classId}
-                    onChange={handleChange}
-                    className="form-select"
-                    required
-                    id="classId"
-                  >
-                    <option value="">Select Class</option>
-                    {classArray.map((className) => (
-                      <option key={className} value={className}>
-                        {className} {/* Display the class name */}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <input
+                      type="text"
+                      name="classId"
+                      value={formData.classId || "Auto-selected based on age"}
+                      className="form-control bg-light"
+                      readOnly
+                      id="classId"
+                    />
+                    <div className="form-text">Automatically selected based on age</div>
+                  </div>
                 </div>
                 <div className="col-md-12">
-                  {" "}
-                  {/* Span two columns on medium and up */}
                   <label className="form-label" htmlFor="address">
                     Home Address
                   </label>
@@ -293,7 +636,7 @@ function StudReg() {
                     value={formData.address}
                     onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
                       handleChange(e)
-                    } // Correct type for textarea
+                    }
                     className="form-control"
                     rows={3}
                     required
@@ -325,22 +668,7 @@ function StudReg() {
                     id="parentName"
                   />
                 </div>
-                <div className="col-md-6">
-                  <label className="form-label" htmlFor="parentId">
-                    Parent ID
-                  </label>
-                  <div>
-                    <input
-                      type="text"
-                      name="parentId"
-                      value={formData.parentId}
-                      className="form-control bg-light"
-                      readOnly
-                      id="parentId"
-                    />
-                    <div className="form-text">Auto-generated ID</div>
-                  </div>
-                </div>
+
                 <div className="col-md-6">
                   <label className="form-label" htmlFor="parentPhone">
                     Phone Number
@@ -373,8 +701,90 @@ function StudReg() {
                     id="parentEmail"
                   />
                 </div>
+                <div className="col-md-6">
+                  <label className="form-label" htmlFor="relationship">
+                    Relationship to Student
+                  </label>
+                  <div className="row">
+                    <div className={formData.relationship === "Other" ? "col-md-6" : "col-md-12"}>
+                      <select
+                        name="relationship"
+                        value={formData.relationship}
+                        onChange={handleChange}
+                        className="form-select"
+                        required
+                        id="relationship"
+                      >
+                        <option value="">Select Relationship</option>
+                        <option value="Father">Father</option>
+                        <option value="Mother">Mother</option>
+                        <option value="Grandfather">Grandfather</option>
+                        <option value="Grandmother">Grandmother</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    {formData.relationship === "Other" && (
+                      <div className="col-md-6">
+                        <input
+                          type="text"
+                          name="relationship"
+                          value={formData.relationship === "Other" ? "" : formData.relationship}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                            setFormData(prev => ({ ...prev, relationship: e.target.value }))
+                          }
+                          className="form-control"
+                          placeholder="e.g., Uncle, Aunt, Legal Guardian"
+                          required
+                          id="otherRelationship"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2">
+                <small className="text-muted">
+                  💡 Tip: If you enter information for an existing parent, we'll automatically detect and link the student to that parent account.
+                </small>
               </div>
             </div>
+
+            {/* Existing Parent Alert */}
+            {showExistingParentInfo && existingParent && (
+              <div className="alert alert-info mb-4">
+                <h5 className="alert-heading">Existing Parent Found!</h5>
+                <p>
+                  We found an existing parent with matching information:
+                </p>
+                <ul className="mb-3">
+                  <li><strong>Name:</strong> {existingParent.name}</li>
+                  <li><strong>Phone:</strong> {existingParent.phone}</li>
+                  <li><strong>Email:</strong> {existingParent.email}</li>
+                  <li><strong>Current Students:</strong> {existingParent.student_id?.length || 0}</li>
+                  {existingParent.childrenNames && existingParent.childrenNames.length > 0 && (
+                    <li>
+                      <strong>Children:</strong> {existingParent.childrenNames.join(", ")}
+                    </li>
+                  )}
+                </ul>
+                <div className="d-flex gap-2">
+                  <button 
+                    type="button" 
+                    className="btn btn-primary btn-sm"
+                    onClick={useExistingParent}
+                  >
+                    Use Existing Parent
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={createNewParent}
+                  >
+                    Create New Parent
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="d-flex justify-content-end gap-3 mt-4">
               <button type="button" className="btn btn-secondary">

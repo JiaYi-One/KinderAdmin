@@ -214,10 +214,11 @@ export default function AttendancePage() {
       // Clear cache for this class and month to ensure fresh data
       AttendanceDataService.clearCacheForMonth(selectedClass, monthString);
       
-      alert("Attendance saved successfully!")
+      // Update the original attendance to reflect the saved state
+      setOriginalAttendance({...attendance});
+      setAttendanceExists(true);
       
-      // Reset attendance after saving
-      setAttendance({})
+      alert("Attendance saved successfully!")
     } catch (error) {
       console.error("Error saving attendance:", error)
       alert("Error saving attendance. Please try again.")
