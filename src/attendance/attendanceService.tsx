@@ -2,9 +2,11 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 export interface AttendanceStudent {
+    reason: string;
     id: string;
     name: string;
     status: string;
+    note?: string;
 }
 
 export interface AttendanceResult {
@@ -49,9 +51,6 @@ const AttendanceDataService = {
             const [year, month] = date.split('-').slice(0, 2);
             const monthDocId = `${year}-${month}`;
             
-            console.log(`Fetching attendance for ${classId} on ${date}`);
-            console.log(`Month document ID: ${monthDocId}`);
-            
             // Fetch the monthly document
             const monthlyDocRef = doc(db, "attendance", classId, "months", monthDocId);
             const monthlyDoc = await getDoc(monthlyDocRef);
@@ -67,10 +66,7 @@ const AttendanceDataService = {
             
             if (monthlyDoc.exists()) {
                 const data = monthlyDoc.data() as MonthlyAttendanceData;
-                console.log(`Monthly document data:`, data);
-                
                 const dayData = data[date];
-                console.log(`Day data for ${date}:`, dayData);
                 
                 if (dayData) {
                     const students: AttendanceStudent[] = [];
@@ -80,7 +76,9 @@ const AttendanceDataService = {
                         students.push({
                             id: studentId,
                             name: studentData.name,
-                            status: studentData.status
+                            status: studentData.status,
+                            note: studentData.note,
+                            reason: ""
                         });
                         
                         if (studentData.status === "present") present++;
@@ -94,13 +92,7 @@ const AttendanceDataService = {
                     result.leave = leave;
                     result.total = students.length;
                     result.percentage = result.total ? Math.round((present / result.total) * 100) : 0;
-                    
-                    console.log(`Result for ${classId} on ${date}:`, result);
-                } else {
-                    console.log(`No day data found for ${date} in ${classId}`);
                 }
-            } else {
-                console.log(`Monthly document does not exist for ${classId}/${monthDocId}`);
             }
             
             // Cache the result
@@ -114,8 +106,6 @@ const AttendanceDataService = {
 
     // Fetch attendance for multiple classes on multiple dates (parallel)
     fetchBulkAttendance: async (classIds: string[], dates: string[]): Promise<(AttendanceResult & { classId: string; date: string })[]> => {
-        console.log('fetchBulkAttendance called with:', { classIds, dates });
-        
         const promises: Promise<AttendanceResult & { classId: string; date: string }>[] = [];
         for (const classId of classIds) {
             for (const date of dates) {
@@ -126,7 +116,6 @@ const AttendanceDataService = {
             }
         }
         const results = await Promise.all(promises);
-        console.log('fetchBulkAttendance results:', results);
         return results;
     },
 
@@ -139,7 +128,6 @@ const AttendanceDataService = {
     clearCacheForClass: (classId: string, date: string) => {
         const cacheKey = AttendanceDataService.getCacheKey(classId, date);
         AttendanceDataService.cache.delete(cacheKey);
-        console.log(`Cleared cache for ${classId} on ${date}`);
     },
 
     // Clear cache for all dates in a month (useful when saving new attendance)
@@ -151,21 +139,7 @@ const AttendanceDataService = {
             }
         });
         keysToDelete.forEach(key => AttendanceDataService.cache.delete(key));
-        console.log(`Cleared cache for ${classId} month ${yearMonth}`);
     }
-};
-
-// Fetch functions for different time periods (used in AttendanceReport.tsx)
-export const fetchDailyAttendance = async (classIds: string[], dates: string[]): Promise<(AttendanceResult & { classId: string; date: string })[]> => {
-    return AttendanceDataService.fetchBulkAttendance(classIds, dates);
-};
-
-export const fetchWeeklyAttendance = async (classIds: string[], dates: string[]): Promise<(AttendanceResult & { classId: string; date: string })[]> => {
-    return AttendanceDataService.fetchBulkAttendance(classIds, dates);
-};
-
-export const fetchMonthlyAttendance = async (classIds: string[], dates: string[]): Promise<(AttendanceResult & { classId: string; date: string })[]> => {
-    return AttendanceDataService.fetchBulkAttendance(classIds, dates);
 };
 
 export default AttendanceDataService; 

@@ -20,7 +20,6 @@ import { db } from "../firebase";
 import AttendanceDataService from "./attendanceService";
 import type { ChipProps } from '@mui/material';
 
-// Types for real data
 interface DashboardStats {
   totalStudents: number;
   totalClasses: number;
@@ -51,23 +50,6 @@ export default function Dashboard() {
   const [students, setStudents] = useState<{ id: string; name: string; status: string }[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
 
-  // Helper function to get current week (Monday to Friday)
-
-  // Helper function to get week dates (Monday to Friday)
-
-  // Helper function to get week range label
-
-  // Fetch all classes for management
-
-  // Handle class selection in manage attendance
-
-  // Handle student selection and fetch weekly attendance
-
-  // Handle week change
-
-  // Get status color for weekly view
-
-  // Get status icon for weekly view
 
   // Fetch dashboard data
   useEffect(() => {
@@ -76,7 +58,6 @@ export default function Dashboard() {
         setLoading(true);
         setError(null);
 
-        // Get today's date in YYYY-MM-DD format
         const today = new Date().toISOString().split('T')[0];
         
         // Check if today is weekend
@@ -118,7 +99,8 @@ export default function Dashboard() {
         let totalLeave = 0;
         const classData: ClassData[] = [];
 
-        for (const classId of classIds) {
+        // Use Promise.all for parallel API calls instead of sequential
+        const attendancePromises = classIds.map(async (classId) => {
           try {
             const attendanceResult = await AttendanceDataService.fetchClassAttendance(classId, displayDate);
             
@@ -130,29 +112,47 @@ export default function Dashboard() {
             const classStudents = classStudentsSnapshot.docs;
             const grade = classStudents.length > 0 ? classStudents[0].data()?.grade || "N/A" : "N/A";
             
-            classData.push({
+            return {
               id: classId,
               name: classId, // Using classId as name for now
               students: classStudents.length,
               present: attendanceResult.present,
-              grade: grade
-            });
-
-            totalPresent += attendanceResult.present;
-            totalAbsent += attendanceResult.absent;
-            totalLeave += attendanceResult.leave;
+              grade: grade,
+              absent: attendanceResult.absent,
+              leave: attendanceResult.leave
+            };
           } catch (error) {
             console.error(`Error fetching attendance for class ${classId}:`, error);
-            // Add class with zero attendance if there's an error
-            classData.push({
+            // Return class with zero attendance if there's an error
+            return {
               id: classId,
               name: classId,
               students: 0,
               present: 0,
-              grade: "N/A"
-            });
+              grade: "N/A",
+              absent: 0,
+              leave: 0
+            };
           }
-        }
+        });
+
+        // Wait for all API calls to complete in parallel
+        const results = await Promise.all(attendancePromises);
+        
+        // Process results
+        results.forEach(result => {
+          classData.push({
+            id: result.id,
+            name: result.name,
+            students: result.students,
+            present: result.present,
+            grade: result.grade
+          });
+          
+          totalPresent += result.present;
+          totalAbsent += result.absent;
+          totalLeave += result.leave;
+        });
 
         const totalAttendance = totalPresent + totalAbsent + totalLeave;
         const attendanceRate = totalAttendance > 0 ? (totalPresent / totalAttendance) * 100 : 0;
@@ -426,6 +426,33 @@ export default function Dashboard() {
               </div>
               <Typography variant="body2" color="text.secondary">
                 View and manage student attendance by class and week
+              </Typography>
+            </Link>
+          </div>
+          <div 
+            style={{ 
+              flex: "1 1 300px",
+              minWidth: "300px",
+              height: "100px", 
+              textAlign: "left", 
+              textDecoration: "none",
+              cursor: "pointer",
+              boxShadow: "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)",
+              borderRadius: "4px",
+              backgroundColor: "white",
+              padding: "16px",
+              transition: "box-shadow 0.3s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.23)"}
+            onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)"}
+          >
+            <Link to="/attendance/stud_onleave" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <EventBusyIcon style={{ color: "#ff9800" }} />
+                <Typography variant="h6">Students On Leave</Typography>
+              </div>
+              <Typography variant="body2" color="text.secondary">
+                View and manage students who are currently on leave
               </Typography>
             </Link>
           </div>

@@ -49,7 +49,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import type { ChipProps } from '@mui/material';
 import AttendanceDataService from './attendanceService';
-import { fetchDailyAttendance, fetchMonthlyAttendance } from './attendanceService';
+import { fetchDailyAttendance, fetchMonthlyAttendance } from './attendanceUtils';
 
 // Utility: Get all dates in a specific week (Mon-Fri)
 function getWeekDates(startDate: Date): Date[] {
