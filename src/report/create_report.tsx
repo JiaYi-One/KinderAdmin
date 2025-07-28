@@ -229,7 +229,7 @@ interface Student {
 
 interface ReportDataToStore {
   studentId: string
-  parentId: string
+  classId: string
   type: string
   term: string
   createdAt: unknown
@@ -668,7 +668,7 @@ function TeacherReportForm() {
       // Prepare report data based on type
       const reportDataToStore: ReportDataToStore = {
         studentId: reportData.studentId,
-        parentId: '', // Will be fetched from student data
+        classId: '', // Will be fetched from student data
         type: reportData.reportType,
         term: reportData.academicPeriod,
         createdAt: serverTimestamp(),
@@ -677,11 +677,10 @@ function TeacherReportForm() {
         data: {}
       }
 
-      // Get parent ID from student data
+      // Get class ID from student data
       const selectedStudent = students.find(s => s.id === reportData.studentId)
       if (selectedStudent) {
-        // Assuming parent ID is stored in student data, you may need to adjust this
-        reportDataToStore.parentId = selectedStudent.classId // Temporary, adjust based on your data structure
+        reportDataToStore.classId = selectedStudent.classId
       }
 
       // Format data based on report type
@@ -701,21 +700,213 @@ function TeacherReportForm() {
         case 'academic':
           reportDataToStore.data = {
             generalComments: reportData.comments,
-            assessments: academicAssessments
+            sections: {
+              'Language & Communication': {
+                'Speaking Skills': Object.fromEntries(
+                  Object.entries({
+                    'thoughts': academicAssessments.thoughts,
+                    'vocabulary': academicAssessments.vocabulary,
+                    'instructions': academicAssessments.instructions,
+                    'discussions': academicAssessments.discussions,
+                    'questions': academicAssessments.questions
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                ),
+                'Early Literacy': Object.fromEntries(
+                  Object.entries({
+                    'uppercase': academicAssessments.uppercase,
+                    'lowercase': academicAssessments.lowercase,
+                    'sounds': academicAssessments.sounds,
+                    'books': academicAssessments.books,
+                    'writing': academicAssessments.writing
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Mathematical Thinking': {
+                'Number Concepts': Object.fromEntries(
+                  Object.entries({
+                    'numbers': academicAssessments.numbers,
+                    'counting': academicAssessments.counting,
+                    'concepts': academicAssessments.concepts,
+                    'operations': academicAssessments.operations
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                ),
+                'Shapes & Patterns': Object.fromEntries(
+                  Object.entries({
+                    'basic': academicAssessments.basic,
+                    'colors': academicAssessments.colors,
+                    'patterns': academicAssessments.patterns,
+                    'sorting': academicAssessments.sorting
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Cognitive Skills': {
+                'Problem Solving': Object.fromEntries(
+                  Object.entries({
+                    'problems': academicAssessments.problems
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                ),
+                'Attention & Memory': Object.fromEntries(
+                  Object.entries({
+                    'attention': academicAssessments.attention,
+                    'memory': academicAssessments.memory,
+                    'connections': academicAssessments.connections,
+                    'curiosity': academicAssessments.curiosity
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Learning Habits': {
+                'Work Habits': Object.fromEntries(
+                  Object.entries({
+                    'tasks': academicAssessments.tasks,
+                    'independent': academicAssessments.independent,
+                    'help': academicAssessments.help,
+                    'persistence': academicAssessments.persistence,
+                    'materials': academicAssessments.materials
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              }
+            },
+            sectionOrder: [
+              'Language & Communication',
+              'Mathematical Thinking', 
+              'Cognitive Skills',
+              'Learning Habits'
+            ],
+            subsectionOrder: {
+              'Language & Communication': ['Speaking Skills', 'Early Literacy'],
+              'Mathematical Thinking': ['Number Concepts', 'Shapes & Patterns'],
+              'Cognitive Skills': ['Problem Solving', 'Attention & Memory'],
+              'Learning Habits': ['Work Habits']
+            }
           } as Record<string, unknown>
           break
 
         case 'social':
           reportDataToStore.data = {
             generalComments: reportData.comments,
-            assessments: socialAssessments
+            sections: {
+              'Social Skills': {
+                'Cooperation': Object.fromEntries(
+                  Object.entries({
+                    'cooperative': socialAssessments.cooperative,
+                    'shares': socialAssessments.shares,
+                    'turns': socialAssessments.turns,
+                    'kindness': socialAssessments.kindness,
+                    'includes': socialAssessments.includes
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                ),
+                'Communication': Object.fromEntries(
+                  Object.entries({
+                    'words': socialAssessments.words,
+                    'listens': socialAssessments.listens,
+                    'compromises': socialAssessments.compromises
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Emotional Development': {
+                'Self-Awareness': Object.fromEntries(
+                  Object.entries({
+                    'feelings': socialAssessments.feelings,
+                    'confidence': socialAssessments.confidence,
+                    'needs': socialAssessments.needs,
+                    'pride': socialAssessments.pride
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                ),
+                'Emotional Regulation': Object.fromEntries(
+                  Object.entries({
+                    'frustration': socialAssessments.frustration,
+                    'calms': socialAssessments.calms,
+                    'empathy': socialAssessments.empathy,
+                    'transitions': socialAssessments.transitions
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Behavior & Classroom Conduct': {
+                'Classroom Rules': Object.fromEntries(
+                  Object.entries({
+                    'classroom': socialAssessments.classroom,
+                    'routines': socialAssessments.routines,
+                    'hand': socialAssessments.hand,
+                    'turn': socialAssessments.turn,
+                    'cleanup': socialAssessments.cleanup,
+                    'responsibility': socialAssessments.responsibility
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Relationship with Adults': {
+                'Respect & Cooperation': Object.fromEntries(
+                  Object.entries({
+                    'respect': socialAssessments.respect,
+                    'directions': socialAssessments.directions,
+                    'help': socialAssessments.help,
+                    'comfort': socialAssessments.comfort
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              }
+            },
+            sectionOrder: [
+              'Social Skills',
+              'Emotional Development',
+              'Behavior & Classroom Conduct',
+              'Relationship with Adults'
+            ],
+            subsectionOrder: {
+              'Social Skills': ['Cooperation', 'Communication'],
+              'Emotional Development': ['Self-Awareness', 'Emotional Regulation'],
+              'Behavior & Classroom Conduct': ['Classroom Rules'],
+              'Relationship with Adults': ['Respect & Cooperation']
+            }
           } as Record<string, unknown>
           break
 
         case 'physical':
           reportDataToStore.data = {
             generalComments: reportData.comments,
-            assessments: physicalAssessments
+            sections: {
+              'Gross Motor Skills': {
+                'Movement': Object.fromEntries(
+                  Object.entries({
+                    'runs': physicalAssessments.runs,
+                    'jumps': physicalAssessments.jumps,
+                    'climbs': physicalAssessments.climbs,
+                    'balance': physicalAssessments.balance,
+                    'balls': physicalAssessments.balls,
+                    'pe': physicalAssessments.pe
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Fine Motor Skills': {
+                'Hand Skills': Object.fromEntries(
+                  Object.entries({
+                    'pencil': physicalAssessments.pencil,
+                    'scissors': physicalAssessments.scissors,
+                    'draws': physicalAssessments.draws,
+                    'tools': physicalAssessments.tools,
+                    'manipulates': physicalAssessments.manipulates,
+                    'coordination': physicalAssessments.coordination
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              },
+              'Self-Care & Independence': {
+                'Daily Living Skills': Object.fromEntries(
+                  Object.entries({
+                    'clothing': physicalAssessments.clothing,
+                    'bathroom': physicalAssessments.bathroom,
+                    'lunch': physicalAssessments.lunch
+                  }).filter(([, value]) => value !== undefined && value !== '')
+                )
+              }
+            },
+            sectionOrder: [
+              'Gross Motor Skills',
+              'Fine Motor Skills',
+              'Self-Care & Independence'
+            ],
+            subsectionOrder: {
+              'Gross Motor Skills': ['Movement'],
+              'Fine Motor Skills': ['Hand Skills'],
+              'Self-Care & Independence': ['Daily Living Skills']
+            }
           } as Record<string, unknown>
           break
 
@@ -832,15 +1023,18 @@ function TeacherReportForm() {
                   <option key={student.id} value={student.id}>{student.name}</option>
                 ))}
               </Select>
-            </div><div className="col-md-3">
+            </div>            <div className="col-md-3">
               <Label htmlFor="academicYear">Academic Year <span className="text-danger">*</span></Label>
               <Select 
                 value={selectedYear} 
                 onValueChange={handleYearChange}
                 required
-                disabled
               >
-                <option value={selectedYear}>{selectedYear}</option>
+                <option value="">Select year</option>
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
               </Select>
             </div>
             <div className="col-md-3">
