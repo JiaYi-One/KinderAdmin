@@ -14,6 +14,7 @@ interface ReportData {
   studentId: string
   reportType: string
   academicPeriod: string
+  examType: string
   subjects: Subject[]
   comments: string
   overallGrade: string
@@ -420,35 +421,35 @@ export const ExamReportForm: React.FC<ReportTypeProps> = ({
       <div className="mb-4">
         <div className="row g-3">
           <div className="col-md-6">
-            <Label htmlFor="examType">Exam Type</Label>
+            <Label htmlFor="examType">Exam Type <span className="text-danger">*</span></Label>
             <Select 
-              value={reportData.academicPeriod} 
-              onValueChange={(value) => setReportData({ ...reportData, academicPeriod: value })}
+              value={reportData.examType} 
+              onValueChange={(value) => setReportData({ ...reportData, examType: value })}
+              required
             >
               <option value="">Select exam type</option>
               <option value="midterm">Midterm Exam</option>
               <option value="final">Final Exam</option>
-              <option value="unit">Unit Test</option>
-              <option value="assessment">Assessment Test</option>
+         
             </Select>
           </div>
         </div>
       </div>
 
       {/* Subjects & Grades Section */}
-      <div className="mb-4">
+      <div className="mb-4" data-subjects-section>
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <h4 className="h5 fw-semibold mb-0">Subjects & Grades</h4>
+          <h4 className="h5 fw-semibold mb-0">Subjects & Grades <span className="text-danger">*</span></h4>
         </div>
         
         <Card>
           <CardContent>
             <div className="row g-3 mb-3">
               <div className="col-md-4">
-                <Label className="fw-semibold">Subject</Label>
+                <Label className="fw-semibold">Subject <span className="text-danger">*</span></Label>
               </div>
               <div className="col-md-4">
-                <Label className="fw-semibold">Score</Label>
+                <Label className="fw-semibold">Score <span className="text-danger">*</span></Label>
               </div>
               <div className="col-md-4">
                 <Label className="fw-semibold">Grade</Label>
@@ -462,6 +463,7 @@ export const ExamReportForm: React.FC<ReportTypeProps> = ({
                     value={subject.name}
                     onChange={(e) => handleSubjectChange(index, 'name', e.target.value)}
                     placeholder="Subject name"
+                    required={index === 0} // Only first subject is required
                   />
                 </div>
                 <div className="col-md-4">
@@ -471,7 +473,8 @@ export const ExamReportForm: React.FC<ReportTypeProps> = ({
                     max="100"
                     value={subject.comments}
                     onChange={(e) => handleSubjectChange(index, 'comments', e.target.value)}
-                    placeholder="Score"
+                    placeholder="Score (0-100)"
+                    required={index === 0} // Only first subject is required
                   />
                 </div>
                 <div className="col-md-4">
@@ -525,12 +528,16 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
   return (
     <>
       {/* Academic & Cognitive Development Report */}
+      <div className="alert alert-info mb-4">
+        <strong>Note:</strong> At least one complete section must be fully filled to submit this report (all skills in that section must be assessed). Sections marked with <span className="text-danger">*</span> are required.
+      </div>
+      
       <div className="mb-4">
         
         {/* Language & Communication Skills */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="academic-language">
           <CardHeader>
-            <CardTitle>🧠 LANGUAGE & COMMUNICATION SKILLS</CardTitle>
+            <CardTitle>🧠 LANGUAGE & COMMUNICATION SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -551,9 +558,9 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Mathematical Thinking */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="academic-math">
           <CardHeader>
-            <CardTitle>🔢 MATHEMATICAL THINKING</CardTitle>
+            <CardTitle>🔢 MATHEMATICAL THINKING <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -574,9 +581,9 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Cognitive Skills */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="academic-cognitive">
           <CardHeader>
-            <CardTitle>🧩 COGNITIVE SKILLS</CardTitle>
+            <CardTitle>🧩 COGNITIVE SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -589,9 +596,9 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Learning Habits */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="academic-learning">
           <CardHeader>
-            <CardTitle>📚 LEARNING HABITS</CardTitle>
+            <CardTitle>📚 LEARNING HABITS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -618,12 +625,16 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
   return (
     <>
       {/* Social & Emotional Development Report */}
+      <div className="alert alert-info mb-4">
+        <strong>Note:</strong> At least one complete section must be fully filled to submit this report (all skills in that section must be assessed). Sections marked with <span className="text-danger">*</span> are required.
+      </div>
+      
       <div className="mb-4">
         
         {/* Social Skills */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="social-skills">
           <CardHeader>
-            <CardTitle>👫 SOCIAL SKILLS</CardTitle>
+            <CardTitle>👫 SOCIAL SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -644,9 +655,9 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Emotional Development */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="social-emotional">
           <CardHeader>
-            <CardTitle>💭 EMOTIONAL DEVELOPMENT</CardTitle>
+            <CardTitle>💭 EMOTIONAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -667,9 +678,9 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Behavior & Classroom Conduct */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="social-behavior">
           <CardHeader>
-            <CardTitle>📏 BEHAVIOR & CLASSROOM CONDUCT</CardTitle>
+            <CardTitle>📏 BEHAVIOR & CLASSROOM CONDUCT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -690,9 +701,9 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         </Card>
 
         {/* Relationship with Adults */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="social-adults">
           <CardHeader>
-            <CardTitle>🤝 RELATIONSHIP WITH ADULTS</CardTitle>
+            <CardTitle>🤝 RELATIONSHIP WITH ADULTS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -719,12 +730,16 @@ export const PhysicalCreativeForm: React.FC<ReportTypeProps> = ({
   return (
     <>
       {/* Physical & Creative Development Report */}
+      <div className="alert alert-info mb-4">
+        <strong>Note:</strong> At least one complete section must be fully filled to submit this report (all skills in that section must be assessed). Sections marked with <span className="text-danger">*</span> are required.
+      </div>
+      
       <div className="mb-4">
         
         {/* Physical Development */}
-        <Card className="mb-4">
+        <Card className="mb-4" data-section="physical-development">
           <CardHeader>
-            <CardTitle>🏃 PHYSICAL DEVELOPMENT</CardTitle>
+            <CardTitle>🏃 PHYSICAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection

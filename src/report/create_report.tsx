@@ -202,6 +202,7 @@ interface ReportData {
   studentId: string
   reportType: string
   academicPeriod: string
+  examType: string
   subjects: Subject[]
   comments: string
   overallGrade: string
@@ -244,6 +245,7 @@ function TeacherReportForm() {
     studentId: '',
     reportType: '',
     academicPeriod: '',
+    examType: '',
     subjects: [
       { name: 'Mathematics', grade: '', comments: '' },
       { name: 'English', grade: '', comments: '' },
@@ -256,6 +258,22 @@ function TeacherReportForm() {
     teacherName: '',
     date: new Date().toISOString().split('T')[0]
   })
+
+  // Separate state for year and quarter
+  const [selectedYear, setSelectedYear] = useState('')
+  const [selectedQuarter, setSelectedQuarter] = useState('')
+
+  // Auto-assign current year on mount and when resetting
+  useEffect(() => {
+    const now = new Date()
+    const year = now.getFullYear().toString()
+    if (!selectedYear) {
+      setSelectedYear(year)
+      if (selectedQuarter) {
+        setReportData(prev => ({ ...prev, academicPeriod: `${year}-${selectedQuarter}` }))
+      }
+    }
+  }, [selectedYear, selectedQuarter, setReportData])
 
   const [classes, setClasses] = useState<Class[]>([])
   const [students, setStudents] = useState<Student[]>([])
@@ -385,8 +403,266 @@ function TeacherReportForm() {
     setReportData({ ...reportData, subjects: [...reportData.subjects, newSubject] })
   }
 
+  // Handle year change
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year)
+    const academicPeriod = year && selectedQuarter ? `${year}-${selectedQuarter}` : ''
+    setReportData({ ...reportData, academicPeriod })
+  }
+
+  // Handle quarter change
+  const handleQuarterChange = (quarter: string) => {
+    setSelectedQuarter(quarter)
+    const academicPeriod = selectedYear && quarter ? `${selectedYear}-${quarter}` : ''
+    setReportData({ ...reportData, academicPeriod })
+  }
+
+  // Function to validate form data
+  const validateForm = (): { isValid: boolean; errors: string[]; scrollToSubjects?: boolean; scrollToSection?: string } => {
+    const errors: string[] = []
+    let scrollToSubjects = false
+    let scrollToSection = ''
+
+    // Basic required fields
+    if (!reportData.className) errors.push('Class is required')
+    if (!reportData.studentName) errors.push('Student is required')
+    if (!reportData.studentId) errors.push('Student ID is required')
+    if (!reportData.reportType) errors.push('Report type is required')
+    if (!reportData.academicPeriod) errors.push('Academic period is required')
+    if (!reportData.date) errors.push('Report date is required')
+    if (!reportData.comments.trim()) errors.push('General comments are required')
+
+    // Validate based on report type
+    switch (reportData.reportType) {
+      case 'exam': {
+        // Check if exam type is selected
+        if (!reportData.examType || reportData.examType === '') {
+          errors.push('Exam type is required for exam reports')
+        }
+        
+        // Enhanced subject validation
+        const subjectsWithNames = reportData.subjects.filter(subject => 
+          subject.name.trim() !== ''
+        )
+        
+        if (subjectsWithNames.length === 0) {
+          errors.push('At least one subject must have a name')
+          scrollToSubjects = true
+        }
+        
+        // Check if subjects have both names and scores
+        const subjectsWithScores = reportData.subjects.filter(subject => 
+          subject.name.trim() !== '' && subject.comments.trim() !== '' && !isNaN(parseInt(subject.comments))
+        )
+        
+        if (subjectsWithScores.length === 0) {
+          errors.push('At least one subject must have both a name and a score')
+          scrollToSubjects = true
+        }
+        
+        // Check for subjects with names but no scores
+        const subjectsWithNamesNoScores = reportData.subjects.filter(subject => 
+          subject.name.trim() !== '' && (subject.comments.trim() === '' || isNaN(parseInt(subject.comments)))
+        )
+        
+        if (subjectsWithNamesNoScores.length > 0) {
+          errors.push('All subjects with names must have valid scores (0-100)')
+          scrollToSubjects = true
+        }
+        
+        // Check for valid score ranges
+        const invalidScores = reportData.subjects.filter(subject => 
+          subject.name.trim() !== '' && subject.comments.trim() !== '' && 
+          (parseInt(subject.comments) < 0 || parseInt(subject.comments) > 100)
+        )
+        
+        if (invalidScores.length > 0) {
+          errors.push('All scores must be between 0 and 100')
+          scrollToSubjects = true
+        }
+        
+        break
+      }
+
+      case 'academic': {
+        // Check if at least one complete section is fully filled
+        const academicSections = {
+          'Language & Communication': ['thoughts', 'vocabulary', 'instructions', 'discussions', 'questions', 'uppercase', 'lowercase', 'sounds', 'books', 'writing'],
+          'Mathematical Thinking': ['numbers', 'counting', 'concepts', 'operations', 'basic', 'colors', 'patterns', 'sorting'],
+          'Cognitive Skills': ['problems', 'attention', 'memory', 'connections', 'curiosity'],
+          'Learning Habits': ['tasks', 'independent', 'help', 'persistence', 'materials']
+        }
+        
+        const fullyCompletedSections = Object.entries(academicSections).filter(([, skills]) => {
+          const completedSkills = skills.filter(skill => academicAssessments[skill])
+          return completedSkills.length === skills.length // All skills in the section must be filled
+        })
+        
+        if (fullyCompletedSections.length === 0) {
+          errors.push('At least one complete section must be fully filled for Academic Development Report (all skills in that section must be assessed)')
+          
+          // Find the section with the most completed skills to scroll to
+          const sectionProgress = Object.entries(academicSections).map(([sectionName, skills]) => {
+            const completedSkills = skills.filter(skill => academicAssessments[skill])
+            return { sectionName, completedCount: completedSkills.length, totalCount: skills.length }
+          })
+          
+          const bestSection = sectionProgress.reduce((best, current) => 
+            current.completedCount > best.completedCount ? current : best
+          )
+          
+          // Map section names to data attributes
+          const sectionMap: Record<string, string> = {
+            'Language & Communication': 'academic-language',
+            'Mathematical Thinking': 'academic-math',
+            'Cognitive Skills': 'academic-cognitive',
+            'Learning Habits': 'academic-learning'
+          }
+          
+          scrollToSection = sectionMap[bestSection.sectionName] || 'academic-language'
+        }
+        break
+      }
+
+      case 'social': {
+        // Check if at least one complete section is fully filled
+        const socialSections = {
+          'Social Skills': ['cooperative', 'shares', 'turns', 'kindness', 'includes', 'words', 'listens', 'help', 'compromises'],
+          'Emotional Development': ['feelings', 'confidence', 'needs', 'pride', 'frustration', 'calms', 'empathy', 'transitions'],
+          'Behavior & Classroom Conduct': ['classroom', 'routines', 'listens', 'hand', 'materials', 'turn', 'hands', 'cleanup', 'responsibility'],
+          'Relationship with Adults': ['respect', 'directions', 'help', 'comfort']
+        }
+        
+        const fullyCompletedSections = Object.entries(socialSections).filter(([, skills]) => {
+          const completedSkills = skills.filter(skill => socialAssessments[skill])
+          return completedSkills.length === skills.length // All skills in the section must be filled
+        })
+        
+        if (fullyCompletedSections.length === 0) {
+          errors.push('At least one complete section must be fully filled for Social & Emotional Development Report (all skills in that section must be assessed)')
+          
+          // Find the section with the most completed skills to scroll to
+          const sectionProgress = Object.entries(socialSections).map(([sectionName, skills]) => {
+            const completedSkills = skills.filter(skill => socialAssessments[skill])
+            return { sectionName, completedCount: completedSkills.length, totalCount: skills.length }
+          })
+          
+          const bestSection = sectionProgress.reduce((best, current) => 
+            current.completedCount > best.completedCount ? current : best
+          )
+          
+          // Map section names to data attributes
+          const sectionMap: Record<string, string> = {
+            'Social Skills': 'social-skills',
+            'Emotional Development': 'social-emotional',
+            'Behavior & Classroom Conduct': 'social-behavior',
+            'Relationship with Adults': 'social-adults'
+          }
+          
+          scrollToSection = sectionMap[bestSection.sectionName] || 'social-skills'
+        }
+        break
+      }
+
+      case 'physical': {
+        // Check if at least one complete section is fully filled
+        const physicalSections = {
+          'Gross Motor Skills': ['runs', 'jumps', 'climbs', 'balance', 'balls', 'pe'],
+          'Fine Motor Skills': ['pencil', 'scissors', 'draws', 'tools', 'manipulates', 'coordination'],
+          'Self-Care & Independence': ['clothing', 'bathroom', 'hands', 'lunch']
+        }
+        
+        const fullyCompletedSections = Object.entries(physicalSections).filter(([, skills]) => {
+          const completedSkills = skills.filter(skill => physicalAssessments[skill])
+          return completedSkills.length === skills.length // All skills in the section must be filled
+        })
+        
+        if (fullyCompletedSections.length === 0) {
+          errors.push('At least one complete section must be fully filled for Physical & Creative Development Report (all skills in that section must be assessed)')
+          scrollToSection = 'physical-development'
+        }
+        break
+      }
+    }
+
+    return { isValid: errors.length === 0, errors, scrollToSubjects, scrollToSection }
+  }
+
+  // Function to reset all form data to initial state
+  const resetForm = () => {
+    const now = new Date()
+    const year = now.getFullYear().toString()
+    setReportData({
+      className: '',
+      studentName: '',
+      studentId: '',
+      reportType: '',
+      academicPeriod: '',
+      examType: '',
+      subjects: [
+        { name: 'Mathematics', grade: '', comments: '' },
+        { name: 'English', grade: '', comments: '' },
+        { name: 'Science', grade: '', comments: '' },
+        { name: 'Malay', grade: '', comments: '' },
+        { name: 'Chinese', grade: '', comments: '' },
+      ],
+      comments: '',
+      overallGrade: '',
+      teacherName: reportData.teacherName, // Keep teacher name from auth
+      date: new Date().toISOString().split('T')[0]
+    })
+    setSelectedYear(year)
+    setSelectedQuarter('')
+    
+    // Reset assessment states
+    setAcademicAssessments({})
+    setSocialAssessments({})
+    setPhysicalAssessments({})
+    
+    // Reset available students
+    setAvailableStudents([])
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate form before submission
+    const validation = validateForm()
+    if (!validation.isValid) {
+      alert('Please fix the following errors:\n\n' + validation.errors.join('\n'))
+      
+      // Scroll to subjects section if there are subject-related errors
+      if (validation.scrollToSubjects) {
+        setTimeout(() => {
+          const subjectsSection = document.querySelector('[data-subjects-section]')
+          if (subjectsSection) {
+            subjectsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            // Add visual highlight to the subjects section
+            subjectsSection.classList.add('border-danger', 'border-2')
+            setTimeout(() => {
+              subjectsSection.classList.remove('border-danger', 'border-2')
+            }, 3000)
+          }
+        }, 100)
+      }
+      
+      // Scroll to development section if there are development-related errors
+      if (validation.scrollToSection) {
+        setTimeout(() => {
+          const targetSection = document.querySelector(`[data-section="${validation.scrollToSection}"]`)
+          if (targetSection) {
+            targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            // Add visual highlight to the section
+            targetSection.classList.add('border-danger', 'border-2')
+            setTimeout(() => {
+              targetSection.classList.remove('border-danger', 'border-2')
+            }, 3000)
+          }
+        }, 100)
+      }
+      
+      return
+    }
     
     try {
       // Prepare report data based on type
@@ -412,7 +688,7 @@ function TeacherReportForm() {
       switch (reportData.reportType) {
         case 'exam':
           reportDataToStore.data = {
-            examType: reportData.academicPeriod,
+            examType: reportData.examType,
             subjects: reportData.subjects.map(subject => ({
               name: subject.name,
               score: parseInt(subject.comments) || 0,
@@ -456,8 +732,8 @@ function TeacherReportForm() {
       console.log('Report saved successfully with ID:', docRef.id)
       alert('Report saved successfully!')
       
-      // Reset form or redirect
-      // You can add navigation logic here if needed
+      // Reset form to initial state
+      resetForm()
       
     } catch (error) {
       console.error('Error saving report:', error)
@@ -521,6 +797,8 @@ function TeacherReportForm() {
 
   return (
     <form onSubmit={handleSubmit}>
+      
+      
       {/* Basic Information Section */}
       <div className="card mb-4">
         <div className="card-header">
@@ -529,10 +807,11 @@ function TeacherReportForm() {
         <div className="card-body">
           <div className="row g-3">
             <div className="col-md-6">
-              <Label htmlFor="className">Class</Label>
+              <Label htmlFor="className">Class <span className="text-danger">*</span></Label>
               <Select 
                 value={reportData.className ? classes.find(c => c.name === reportData.className)?.id || '' : ''}
                 onValueChange={handleClassChange}
+                required
               >
                 <option value="">Select a class</option>
                 {classes.map((cls) => (
@@ -541,32 +820,49 @@ function TeacherReportForm() {
               </Select>
             </div>
             <div className="col-md-6">
-              <Label htmlFor="studentName">Student Name</Label>
+              <Label htmlFor="studentName">Student Name <span className="text-danger">*</span></Label>
               <Select 
                 value={reportData.studentId}
                 onValueChange={handleStudentChange}
                 disabled={!reportData.className}
+                required
               >
                 <option value="">Select a student</option>
                 {availableStudents.map((student) => (
                   <option key={student.id} value={student.id}>{student.name}</option>
                 ))}
               </Select>
-            </div>
-            <div className="col-md-6">
-              <Label htmlFor="studentId">Student ID</Label>
-              <Input
-                id="studentId"
-                value={reportData.studentId}
-                placeholder="Student ID (auto-filled)"
+            </div><div className="col-md-3">
+              <Label htmlFor="academicYear">Academic Year <span className="text-danger">*</span></Label>
+              <Select 
+                value={selectedYear} 
+                onValueChange={handleYearChange}
+                required
                 disabled
-              />
+              >
+                <option value={selectedYear}>{selectedYear}</option>
+              </Select>
+            </div>
+            <div className="col-md-3">
+              <Label htmlFor="academicQuarter">Quarter <span className="text-danger">*</span></Label>
+              <Select 
+                value={selectedQuarter} 
+                onValueChange={handleQuarterChange}
+                required
+              >
+                <option value="">Select quarter</option>
+                <option value="Q1">Q1</option>
+                <option value="Q2">Q2</option>
+                <option value="Q3">Q3</option>
+                <option value="Q4">Q4</option>
+              </Select>
             </div>
             <div className="col-md-6">
-              <Label htmlFor="reportType">Report Type</Label>
+              <Label htmlFor="reportType">Report Type <span className="text-danger">*</span></Label>
               <Select 
                 value={reportData.reportType} 
                 onValueChange={(value) => setReportData({ ...reportData, reportType: value })}
+                required
               >
                 <option value="">Select report type</option>
                 <option value="exam">Exam Report</option>
@@ -575,28 +871,7 @@ function TeacherReportForm() {
                 <option value="physical">Physical & Creative Development Report</option>
               </Select>
             </div>
-            <div className="col-md-6">
-              <Label htmlFor="academicPeriod">Academic Period</Label>
-              <Select 
-                value={reportData.academicPeriod} 
-                onValueChange={(value) => setReportData({ ...reportData, academicPeriod: value })}
-              >
-                <option value="">Select period</option>
-                <option value="2024-2025-Q1">2024-2025 Q1</option>
-                <option value="2024-2025-Q2">2024-2025 Q2</option>
-                <option value="2024-2025-Q3">2024-2025 Q3</option>
-                <option value="2024-2025-Q4">2024-2025 Q4</option>
-              </Select>
-            </div>
-            <div className="col-md-6">
-              <Label htmlFor="teacherName">Teacher Name</Label>
-              <Input
-                id="teacherName"
-                value={reportData.teacherName}
-                placeholder="Teacher name (auto-filled from login)"
-                disabled
-              />
-            </div>
+            
             <div className="col-md-6">
               <Label htmlFor="date">Report Date</Label>
               <Input
@@ -635,13 +910,14 @@ function TeacherReportForm() {
             </div>
             <div className="card-body">
               <div className="mb-3">
-                <Label htmlFor="comments">General Comments</Label>
+                <Label htmlFor="comments"> Comments <span className="text-danger">*</span></Label>
                 <Textarea
                   id="comments"
                   value={reportData.comments}
                   onChange={(e) => setReportData({ ...reportData, comments: e.target.value })}
-                  placeholder="Enter general comments about the student's performance, behavior, and recommendations..."
+                  placeholder="Enter  comments about the student's performance, behavior, and recommendations..."
                   rows={6}
+                  required
                 />
               </div>
               
