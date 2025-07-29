@@ -111,6 +111,9 @@ const NavigationBar: FC = () => {
         <NavLink to="/report/create_report" currentPath={location.pathname}>
           Report
         </NavLink>
+        <NavLink to="/announcements" currentPath={location.pathname}>
+          Announcements
+        </NavLink>
         <div className="ms-3 d-flex align-items-center">
           <button 
             onClick={handleLogout}

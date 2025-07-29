@@ -14,6 +14,7 @@ import AttendanceReport from "./attendance/AttendanceReport";
 import ManageStudAttendance from "./attendance/manageStudAttendance";
 import StudOnLeave from "./attendance/stud_onleave";
 import CreateReport from "./report/create_report";
+import AnnouncementsPage from "./announcement/announcement";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -101,6 +102,11 @@ function App() {
           path="/report/create_report" 
           element={isAuthenticated ? <CreateReport /> : <Navigate to="/login" replace />} 
         />
+        <Route 
+          path="/announcements" 
+          element={isAuthenticated ? <AnnouncementsPage /> : <Navigate to="/login" replace />} 
+        />
+        
       </Routes>
     </>
   );
