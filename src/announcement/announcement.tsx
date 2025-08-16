@@ -95,24 +95,27 @@ export default function AnnouncementsPage() {
           const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"))
           const repliesSnapshot = await getDocs(repliesQuery)
           
-          const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => ({
-            id: replyDoc.id,
-            author: replyDoc.data().author,
-            authorAvatar: replyDoc.data().authorAvatar,
-            content: replyDoc.data().content,
-            timestamp: replyDoc.data().timestamp,
-            isParent: replyDoc.data().isParent,
-            parentId: replyDoc.data().parentId,
-          }))
+          const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => {
+            const replyData = replyDoc.data()
+            return {
+              id: replyDoc.id,
+              author: replyData.author,
+              authorAvatar: replyData.authorAvatar,
+              content: replyData.content,
+              authorRole: replyData.authorRole,
+              parentId: replyData.parentId,
+              createdAt: replyData.createdAt,
+            }
+          })
           
           comments.push({
             id: commentDoc.id,
             author: commentData.author,
             authorAvatar: commentData.authorAvatar,
             content: commentData.content,
-            timestamp: commentData.timestamp,
-            isParent: commentData.isParent,
+            authorRole: commentData.authorRole,
             replies: replies,
+            createdAt: commentData.createdAt,
           })
         }
 
@@ -126,7 +129,6 @@ export default function AnnouncementsPage() {
           author: data.author,
           authorRole: data.authorRole,
           authorAvatar: data.authorAvatar || "",
-          timestamp: data.timestamp,
           category: data.category,
           likes: data.likes || 0,
           comments: comments,
@@ -212,7 +214,6 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorRole: currentUser.role,
         authorAvatar: currentUser.avatar || "",
-        timestamp: "Just now",
         category: formData.category,
         likes: 0,
         likedBy: [],
@@ -230,7 +231,6 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorRole: currentUser.role,
         authorAvatar: currentUser.avatar || "",
-        timestamp: "Just now",
         category: formData.category,
         likes: 0,
         comments: [],
@@ -399,8 +399,7 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorAvatar: currentUser.avatar || "",
         content: commentText,
-        timestamp: "Just now",
-        isParent: currentUser.role === "parent",
+        authorRole: currentUser.role,
         createdAt: serverTimestamp(),
       }
 
@@ -412,9 +411,9 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorAvatar: currentUser.avatar || "",
         content: commentText,
-        timestamp: "Just now",
-        isParent: currentUser.role === "parent",
+        authorRole: currentUser.role,
         replies: [],
+        createdAt: new Date(), // Add current date for immediate display
       }
 
       setAnnouncements(
@@ -446,8 +445,7 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorAvatar: currentUser.avatar || "",
         content: replyText,
-        timestamp: "Just now",
-        isParent: currentUser.role === "parent",
+        authorRole: currentUser.role,
         parentId: parentCommentId,
         createdAt: serverTimestamp(),
       }
@@ -460,9 +458,9 @@ export default function AnnouncementsPage() {
         author: currentUser.name,
         authorAvatar: currentUser.avatar || "",
         content: replyText,
-        timestamp: "Just now",
-        isParent: currentUser.role === "parent",
+        authorRole: currentUser.role,
         parentId: parentCommentId,
+        createdAt: new Date(), // Add current date for immediate display
       }
 
       setAnnouncements(
@@ -806,7 +804,7 @@ export default function AnnouncementsPage() {
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                   {announcement.updatedAt 
                     ? `Edited ${getRelativeTime(announcement.updatedAt)}`
-                    : getRelativeTime(announcement.createdAt || announcement.timestamp)
+                    : getRelativeTime(announcement.createdAt)
                   }
                 </Typography>
               </Box>
@@ -853,14 +851,13 @@ export default function AnnouncementsPage() {
                                   <Typography variant="body2" sx={{ fontWeight: 500 }}>
                                     {comment.author}
                                   </Typography>
-                                  {comment.isParent && (
-                                    <Chip 
-                                      icon={<Person />} 
-                                      label="Parent" 
-                                      size="small" 
-                                      variant="outlined"
-                                    />
-                                  )}
+                                  <Chip 
+                                    icon={comment.authorRole === "parent" ? <Person /> : <Group />}
+                                    label={comment.authorRole === "parent" ? "Parent" : comment.authorRole === "admin" ? "Admin" : "Teacher"}
+                                    size="small" 
+                                    variant="outlined"
+                                    color={comment.authorRole === "parent" ? "primary" : comment.authorRole === "admin" ? "error" : "secondary"}
+                                  />
                                 </Box>
                               }
                               secondary={
@@ -870,7 +867,7 @@ export default function AnnouncementsPage() {
                                   </Typography>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
                                     <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                      {comment.timestamp}
+                                      {comment.createdAt ? getRelativeTime(comment.createdAt) : 'Just now'}
                                     </Typography>
                                     <Button
                                       size="small"
@@ -933,18 +930,17 @@ export default function AnnouncementsPage() {
                                   <ListItemText
                                     primary={
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                                        <Typography variant="body2" sx={{ fontWeight: '500', fontSize: '0.875rem' }}>
                                           {reply.author}
                                         </Typography>
-                                        {reply.isParent && (
-                                          <Chip 
-                                            icon={<Person />} 
-                                            label="Parent" 
-                                            size="small" 
-                                            variant="outlined"
-                                            sx={{ height: 20, fontSize: '0.75rem' }}
-                                          />
-                                        )}
+                                        <Chip 
+                                          icon={reply.authorRole === "parent" ? <Person /> : <Group />}
+                                          label={reply.authorRole === "parent" ? "Parent" : reply.authorRole === "admin" ? "Admin" : "Teacher"}
+                                          size="small" 
+                                          variant="outlined"
+                                          color={reply.authorRole === "parent" ? "primary" : reply.authorRole === "admin" ? "error" : "secondary"}
+                                          sx={{ height: 20, fontSize: '0.75rem' }}
+                                        />
                                       </Box>
                                     }
                                     secondary={
@@ -953,7 +949,7 @@ export default function AnnouncementsPage() {
                                           {reply.content}
                                         </Typography>
                                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                          {reply.timestamp}
+                                          {reply.createdAt ? getRelativeTime(reply.createdAt) : 'Just now'}
                                         </Typography>
                                       </Box>
                                     }

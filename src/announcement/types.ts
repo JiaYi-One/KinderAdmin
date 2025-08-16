@@ -3,10 +3,10 @@ export interface AnnouncementComment {
   author: string;
   authorAvatar?: string;
   content: string;
-  timestamp: string;
-  isParent: boolean;
+  authorRole?: 'admin' | 'teacher' | 'parent';
   replies?: AnnouncementComment[];
   parentId?: string; // For replies to identify which comment they belong to
+  createdAt?: any; // Firebase timestamp
 }
 
 export interface Announcement {
@@ -16,7 +16,6 @@ export interface Announcement {
   author: string;
   authorRole: 'admin' | 'teacher' | 'parent';
   authorAvatar?: string;
-  timestamp: string;
   category: string;
   likes: number;
   comments: AnnouncementComment[];
