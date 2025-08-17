@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   Calendar,
 } from "lucide-react";
-import { db } from "../firebase";
+import { db } from "../firebase/config";
 import {
   collection,
   doc,
@@ -17,6 +17,8 @@ import {
   query,
   setDoc,
 } from "firebase/firestore";
+import axios from "axios";
+
 
 interface Student {
   class_id: string;
@@ -270,27 +272,26 @@ function CreateBill() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
+  
     try {
+      // 1️⃣ Basic validations
       if (selectedStudentIds.length === 0) {
         alert("Please select at least one student");
         return;
       }
-
-      if (!items.some((item) => item.amount > 0)) {
+  
+      if (!items.some(item => item.amount > 0)) {
         alert("Please add at least one item with an amount");
         return;
       }
-
-      // Group students by parent ID to avoid duplicate notifications
+  
       const parentBills: { [parentId: string]: Bill[] } = {};
-
-      // Create bills and group them by parent
+  
+      // 2️⃣ Create bills and group by parent
       for (const studentId of selectedStudentIds) {
-        const student = students.find((s) => s.id === studentId);
+        const student = students.find(s => s.id === studentId);
         if (!student) continue;
-
-        // Create bill document
+  
         const billDocRef = doc(collection(db, "bills"));
         const billData = {
           billNumber: formData.billNumber,
@@ -309,51 +310,44 @@ function CreateBill() {
           parentName: student.parentName,
           parentEmail: student.parentEmail,
         };
-
+  
         await setDoc(billDocRef, billData);
-
-        // Group bills by parent
-        if (!parentBills[student.parentId]) {
-          parentBills[student.parentId] = [];
-        }
+  
+        if (!parentBills[student.parentId]) parentBills[student.parentId] = [];
         parentBills[student.parentId].push(billData);
       }
-
-      // Create notifications for each parent
+  
+      // 3️⃣ Send Pushy notifications to mobile devices
       for (const [parentId, bills] of Object.entries(parentBills)) {
-        const notificationRef = doc(collection(db, "notifications"));
-        await setDoc(notificationRef, {
-          createdAt: new Date(),
-          parentId: parentId,
-          type: "new_bill",
-          isRead: false,
-          billCount: bills.length,
-          totalAmount: bills.reduce((sum: number, bill) => sum + bill.totalAmount, 0),
-          message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
-          bills: bills.map((bill) => ({
-            billNumber: bill.billNumber,
-            amount: bill.totalAmount,
-            studentName: bill.studentName,
-            dueDate: bill.dueDate,
-            billDate: bill.billDate,
-          })),
-        });
+        try {
+          const notificationData = {
+            parentId,
+            message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
+            billCount: bills.length,
+            totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+          };
+  
+          await axios.post("http://localhost:5000/pushy", notificationData);
+          console.log(`✅ Pushy notification sent for parent ${parentId}`);
+        } catch (error) {
+          console.error(`❌ Failed to send notification for parent ${parentId}:`, error);
+          // Continue processing other parents even if one fails
+        }
       }
-      
-      alert("Bills created and notifications sent successfully!");
-
-      // Reset form
+  
+      alert("Bills created and Pushy notifications sent to mobile devices successfully!");
+  
+      // 4️⃣ Reset form and selections
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
         duePeriod: 14,
         dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
         reference: "",
-        billNumber: `${new Date().getFullYear()}-${Math.floor(
-          Math.random() * 100
-        )}-${Math.floor(Math.random() * 100)}`,
+        billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
       });
       setSelectedStudentIds([]);
       setItems([{ id: 1, description: "Tuition Fee", amount: 0 }]);
+  
     } catch (error) {
       console.error("Error creating bills:", error);
       alert("Failed to create bills. Please try again.");
@@ -361,6 +355,9 @@ function CreateBill() {
       setIsSubmitting(false);
     }
   };
+  
+  
+  
 
   const total = items.reduce((sum, item) => sum + item.amount, 0);
 
