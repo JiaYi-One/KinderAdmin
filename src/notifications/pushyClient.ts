@@ -4,12 +4,13 @@ import { doc, getDoc, Firestore } from "firebase/firestore";
 export interface PushNotificationPayload {
   parentId: string;
   message: string;
-  type?: "new_bill" | "announcement" | "report" | "chat" ;
+  type?: "new_bill" | "announcement" | "report" | "chat";
   title?: string;
   entityId?: string;
   billCount?: number;
   totalAmount?: number;
   parentEmail?: string;
+  billNumbers?: string[];
 }
 
 export interface SendOptions {

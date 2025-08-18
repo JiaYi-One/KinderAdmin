@@ -353,8 +353,10 @@ function CreateBill() {
               message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
               type: "new_bill",
               totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+              billCount: bills.length,
               parentEmail: bills[0]?.parentEmail,
               entityId: bills.length === 1 ? bills[0].billNumber : undefined,
+              billNumbers: bills.map(bill => bill.billNumber),
             })
           )
         );
