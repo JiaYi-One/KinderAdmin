@@ -4,8 +4,9 @@ import { Slot } from "@radix-ui/react-slot"
 import * as LabelPrimitive from "@radix-ui/react-label"
 import { FileText, BookOpen, Save } from 'lucide-react'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import { sendPushNotification } from '../notifications/pushyClient'
 import { 
   ExamReportForm, 
   AcademicDevelopmentForm, 
@@ -678,9 +679,9 @@ function TeacherReportForm() {
       }
 
       // Get class ID from student data
-      const selectedStudent = students.find(s => s.id === reportData.studentId)
-      if (selectedStudent) {
-        reportDataToStore.classId = selectedStudent.classId
+      const currentStudent = students.find(s => s.id === reportData.studentId)
+      if (currentStudent) {
+        reportDataToStore.classId = currentStudent.classId
       }
 
       // Format data based on report type
@@ -921,7 +922,70 @@ function TeacherReportForm() {
       const docRef = await addDoc(reportsRef, reportDataToStore)
       
       console.log('Report saved successfully with ID:', docRef.id)
-      alert('Report saved successfully!')
+
+      // Get student data to find parent information
+      const reportSelectedStudent = students.find(s => s.id === reportData.studentId)
+      
+      if (reportSelectedStudent) {
+        try {
+          // Get parent information from student data
+          const studentDoc = await getDoc(doc(db, 'students', reportData.studentId))
+          const studentData = studentDoc.data()
+          
+          const parentId = studentData?.parentId || reportSelectedStudent.classId // Fallback if needed
+          const parentEmail = studentData?.parentEmail || ''
+          
+          if (parentId) {
+            // Create notification record in Firestore
+            const notificationRecord = {
+              type: "report",
+              parentId: parentId,
+              isRead: false,
+              createdAt: serverTimestamp(),
+              message: `New ${reportData.reportType} report available for ${reportData.studentName}`,
+              reportId: docRef.id,
+              studentName: reportData.studentName,
+              reportType: reportData.reportType,
+              teacherName: reportData.teacherName,
+              reportDate: reportData.date
+            }
+            
+            await addDoc(collection(db, "notifications"), notificationRecord)
+            console.log('Notification record created successfully')
+
+            // Send push notification to mobile device
+            try {
+              const pushSuccess = await sendPushNotification(db, {
+                parentId: parentId,
+                message: `New ${reportData.reportType} report available for ${reportData.studentName}`,
+                type: "report",
+                title: "New Report Available",
+                entityId: docRef.id,
+                parentEmail: parentEmail
+              })
+              
+              if (pushSuccess) {
+                console.log('✅ Push notification sent successfully')
+                alert('Report saved and notification sent successfully!')
+              } else {
+                console.warn('⚠️ Report saved but push notification failed')
+                alert('Report saved successfully! (Push notification could not be sent)')
+              }
+            } catch (pushError) {
+              console.error('Push notification error:', pushError)
+              alert('Report saved successfully! (Push notification could not be sent)')
+            }
+          } else {
+            console.warn('No parent ID found for student')
+            alert('Report saved successfully! (Could not send notification - no parent info)')
+          }
+        } catch (notificationError) {
+          console.error('Error creating notification:', notificationError)
+          alert('Report saved successfully! (Notification creation failed)')
+        }
+      } else {
+        alert('Report saved successfully! (Could not find student data for notification)')
+      }
       
       // Reset form to initial state
       resetForm()
