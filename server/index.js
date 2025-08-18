@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
 import cors from 'cors';
@@ -9,7 +10,7 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 // Use environment variable for security
-const PUSHY_API_KEY = "3a834dabe5d9ca297ada29d915807b619d221224f207ac3c3dd81a791b479209	";
+const PUSHY_API_KEY = (process.env.PUSHY_API_KEY || '').trim();
 
 if (!PUSHY_API_KEY) {
     console.warn('⚠️ PUSHY_API_KEY not set in environment variables');
@@ -25,9 +26,9 @@ app.get('/health', (_req, res) => {
 
 // Pushy notification endpoint
 app.post('/pushy', async (req, res) => {
-    const { parentId, message, billCount, totalAmount, deviceTokens } = req.body || {};
+    const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId } = req.body || {};
 
-    console.log('📨 Notification request:', { parentId, message, billCount, totalAmount });
+    console.log('📨 Notification request:', { parentId, message, billCount, totalAmount, type, title, tokens: deviceTokens?.length || 0 });
 
     if (!deviceTokens || deviceTokens.length === 0) {
         console.error('❌ No device tokens provided');
@@ -35,6 +36,14 @@ app.post('/pushy', async (req, res) => {
     }
 
     try {
+        // Compute a title (fallbacks by type)
+        const computedTitle = title || ({
+            new_bill: 'New Bill Available',
+            announcement: 'New Announcement',
+            report: 'New Report',
+            chat: 'New Message',
+        }[type] || 'KinderCare');
+
         // Send notifications
         const results = await Promise.allSettled(
             deviceTokens.map(async (token) => {
@@ -46,15 +55,17 @@ app.post('/pushy', async (req, res) => {
                         {
                             to: token,
                             data: {
-                                type: 'new_bill',
+                                type: type || 'generic',
                                 parentId: parentId,
                                 billCount: billCount || 1,
                                 totalAmount: totalAmount || 0,
-                                message: message || 'You have a new bill',
+                                message: message || 'You have a new notification',
+                                entityId: entityId || null,
+                                title: computedTitle,
                             },
                             notification: {
-                                title: 'New Bill Available',
-                                body: message || 'You have a new bill to review',
+                                title: computedTitle,
+                                body: message || 'You have a new notification',
                             },
                         },
                         {
