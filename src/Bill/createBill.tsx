@@ -14,12 +14,12 @@ import {
   collection,
   doc,
   getDocs,
-  getDoc,
   query,
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import axios from "axios";
+import { sendPushNotification } from "../notifications/pushyClient";
 
 interface Student {
   class_id: string;
@@ -291,6 +291,7 @@ function CreateBill() {
   
         const billDocRef = doc(collection(db, "bills"));
         const billData = {
+          billId: billDocRef.id,
           billNumber: formData.billNumber,
           billDate: formData.billDate,
           duePeriod: formData.duePeriod,
@@ -343,68 +344,23 @@ function CreateBill() {
       }
 
       let notificationSuccess = false;
-      
-      if (typeof window !== 'undefined' && typeof axios !== 'undefined') {
-        try {
-          for (const [parentId, bills] of Object.entries(parentBills)) {
-            try {
-              // Fetch device tokens for this parent from Firestore
-              const parentRef = doc(db, "parents", parentId);
-              const parentSnap = await getDoc(parentRef);
-              const deviceTokens: string[] = Array.isArray(parentSnap.data()?.deviceTokens)
-                ? (parentSnap.data()?.deviceTokens as string[])
-                : [];
 
-              if (deviceTokens.length === 0) {
-                console.warn(`No device tokens found for parent ${parentId}`);
-                continue;
-              }
-
-              const notificationData = {
-                parentId,
-                message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
-                billCount: bills.length,
-                totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
-                parentEmail: bills[0]?.parentEmail,
-                deviceTokens,
-              };
-
-              // Try localhost first, then 127.0.0.1 as a fallback
-              const maybeUrl = (import.meta.env?.VITE_PUSHY_URL as string | undefined);
-              const endpoints: string[] = [
-                maybeUrl || "http://localhost:5000/pushy",
-                "http://127.0.0.1:5000/pushy",
-              ];
-
-              let sent = false;
-              for (const url of endpoints) {
-                try {
-                  await axios.post(url, notificationData, { timeout: 5000 });
-                  console.log(`✅ Pushy notification sent for parent ${parentId} via ${url}`);
-                  notificationSuccess = true;
-                  sent = true;
-                  break;
-                } catch (err) {
-                  // Retry next endpoint only on network errors (connection refused/timeouts)
-                  if (!axios.isAxiosError(err) || !err.response) {
-                    continue;
-                  }
-                  // Non-network error: stop retrying this parent
-                  throw err;
-                }
-              }
-              if (!sent) {
-                throw new Error("All Pushy endpoints unreachable");
-              }
-            } catch (error) {
-              console.error(`❌ Failed to send notification for parent ${parentId}:`, error);
-            }
-          }
-        } catch (error) {
-          console.warn("Pushy notifications failed, but bills were created successfully:", error);
-        }
-      } else {
-        console.log("Skipping notifications - axios unavailable or not in browser environment");
+      try {
+        const results = await Promise.all(
+          Object.entries(parentBills).map(([parentId, bills]) =>
+            sendPushNotification(db, {
+              parentId,
+              message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
+              type: "new_bill",
+              totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+              parentEmail: bills[0]?.parentEmail,
+              entityId: bills.length === 1 ? bills[0].billNumber : undefined,
+            })
+          )
+        );
+        notificationSuccess = results.some(Boolean);
+      } catch (error) {
+        console.warn("Push notifications failed, but bills were created successfully:", error);
       }
   
       if (typeof window !== 'undefined' && typeof axios !== 'undefined') {
