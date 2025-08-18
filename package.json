@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -22,6 +23,7 @@
     "axios": "^1.11.0",
     "bootstrap": "^5.3.3",
     "bootstrap-icons": "^1.13.1",
+    "cors": "^2.8.5",
     "dayjs": "^1.11.13",
     "express": "^5.1.0",
     "firebase": "^11.9.0",

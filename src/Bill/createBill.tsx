@@ -9,16 +9,17 @@ import {
   CheckCircle2,
   Calendar,
 } from "lucide-react";
-import { db } from "../firebase/config";
+import { db } from "../firebase";
 import {
   collection,
   doc,
   getDocs,
+  getDoc,
   query,
   setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import axios from "axios";
-
 
 interface Student {
   class_id: string;
@@ -34,6 +35,7 @@ interface Student {
   parentPhone: string;
   parentEmail: string;
 }
+
 interface Bill {
   studentName: string;
   studentId: string;
@@ -44,6 +46,7 @@ interface Bill {
   duePeriod: number;
   reference: string;
   billNumber: string;
+  parentEmail?: string;
 }
 
 interface BillItem {
@@ -64,23 +67,22 @@ function CreateBill() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]); // Store student IDs
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectWholeClass, setSelectWholeClass] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<BillItem[]>([
     { id: 1, description: "Tuition Fee", amount: 0 },
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
-    duePeriod: 14, // Default to 14 days
+    duePeriod: 14,
     dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
     reference: "",
-    billNumber: `${new Date().getFullYear()}-${Math.floor(
-      Math.random() * 100
-    )}-${Math.floor(Math.random() * 100)}`,
+    billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
   });
-  const [, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Function to calculate due date based on bill date and due period
   function calculateDueDate(billDate: string, duePeriod: number): string {
@@ -95,11 +97,9 @@ function CreateBill() {
         setLoading(true);
         console.log("Starting to fetch classes...");
 
-        // Create a direct query to list all documents
         const q = query(collection(db, "classes"));
         const querySnapshot = await getDocs(q);
 
-        // Log each document found
         querySnapshot.forEach((doc) => {
           console.log("Found document:", {
             id: doc.id,
@@ -109,11 +109,9 @@ function CreateBill() {
           });
         });
 
-        // Get all class IDs
         const allClasses = querySnapshot.docs.map((doc) => doc.id);
         console.log("All class IDs before sorting:", allClasses);
 
-        // Sort and set the classes
         const classesData = allClasses.sort((a, b) => a.localeCompare(b));
         console.log("Final sorted classes:", classesData);
 
@@ -130,6 +128,7 @@ function CreateBill() {
           message: error instanceof Error ? error.message : "Unknown error",
           type: error instanceof Error ? error.constructor.name : typeof error,
         });
+        setError("Failed to load classes. Please try again.");
         alert("Failed to load classes. Please try again.");
       } finally {
         setLoading(false);
@@ -151,7 +150,6 @@ function CreateBill() {
 
     if (selectedClassName) {
       try {
-        // Get students from the selected class's student subcollection
         const studentsRef = collection(
           db,
           "classes",
@@ -160,7 +158,6 @@ function CreateBill() {
         );
         const studentsSnapshot = await getDocs(studentsRef);
 
-        // Log the raw student data
         console.log(
           "Raw students snapshot:",
           studentsSnapshot.docs.map((doc) => ({
@@ -188,6 +185,7 @@ function CreateBill() {
         setStudents(studentsData);
       } catch (error) {
         console.error("Detailed error fetching students:", error);
+        setError("Failed to load students. Please try again.");
         alert("Failed to load students. Please try again.");
       }
     }
@@ -254,11 +252,9 @@ function CreateBill() {
   ) => {
     const { name, value } = e.target;
     
-    // Update the form data
     setFormData((prev) => {
       const newFormData = { ...prev, [name]: value };
       
-      // If bill date or due period changes, recalculate the due date
       if (name === "billDate" || name === "duePeriod") {
         const duePeriod = name === "duePeriod" ? Number(value) : prev.duePeriod;
         const billDate = name === "billDate" ? value : prev.billDate;
@@ -271,10 +267,12 @@ function CreateBill() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
   
     try {
-      // 1️⃣ Basic validations
       if (selectedStudentIds.length === 0) {
         alert("Please select at least one student");
         return;
@@ -287,7 +285,6 @@ function CreateBill() {
   
       const parentBills: { [parentId: string]: Bill[] } = {};
   
-      // 2️⃣ Create bills and group by parent
       for (const studentId of selectedStudentIds) {
         const student = students.find(s => s.id === studentId);
         if (!student) continue;
@@ -317,27 +314,110 @@ function CreateBill() {
         parentBills[student.parentId].push(billData);
       }
   
-      // 3️⃣ Send Pushy notifications to mobile devices
+      // 3️⃣ Create a Firestore notification per parent so mobile app can show it
       for (const [parentId, bills] of Object.entries(parentBills)) {
         try {
-          const notificationData = {
+          const totalForParent = bills.reduce((sum, b) => sum + b.totalAmount, 0);
+          const notificationDocRef = doc(collection(db, "notifications"));
+          const notificationRecord = {
+            type: "new_bill",
             parentId,
+            isRead: false,
+            createdAt: serverTimestamp(),
             message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
             billCount: bills.length,
-            totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+            totalAmount: totalForParent,
+            bills: bills.map((b) => ({
+              amount: b.totalAmount,
+              billDate: b.billDate,
+              billNumber: b.billNumber,
+              dueDate: b.dueDate,
+              studentName: b.studentName,
+            })),
           };
-  
-          await axios.post("http://localhost:5000/pushy", notificationData);
-          console.log(`✅ Pushy notification sent for parent ${parentId}`);
-        } catch (error) {
-          console.error(`❌ Failed to send notification for parent ${parentId}:`, error);
-          // Continue processing other parents even if one fails
+          await setDoc(notificationDocRef, notificationRecord);
+        } catch (err) {
+          console.error("❌ Failed to save notification record:", err);
+          // Continue even if notification record write fails
         }
       }
+
+      let notificationSuccess = false;
+      
+      if (typeof window !== 'undefined' && typeof axios !== 'undefined') {
+        try {
+          for (const [parentId, bills] of Object.entries(parentBills)) {
+            try {
+              // Fetch device tokens for this parent from Firestore
+              const parentRef = doc(db, "parents", parentId);
+              const parentSnap = await getDoc(parentRef);
+              const deviceTokens: string[] = Array.isArray(parentSnap.data()?.deviceTokens)
+                ? (parentSnap.data()?.deviceTokens as string[])
+                : [];
+
+              if (deviceTokens.length === 0) {
+                console.warn(`No device tokens found for parent ${parentId}`);
+                continue;
+              }
+
+              const notificationData = {
+                parentId,
+                message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
+                billCount: bills.length,
+                totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+                parentEmail: bills[0]?.parentEmail,
+                deviceTokens,
+              };
+
+              // Try localhost first, then 127.0.0.1 as a fallback
+              const maybeUrl = (import.meta.env?.VITE_PUSHY_URL as string | undefined);
+              const endpoints: string[] = [
+                maybeUrl || "http://localhost:5000/pushy",
+                "http://127.0.0.1:5000/pushy",
+              ];
+
+              let sent = false;
+              for (const url of endpoints) {
+                try {
+                  await axios.post(url, notificationData, { timeout: 5000 });
+                  console.log(`✅ Pushy notification sent for parent ${parentId} via ${url}`);
+                  notificationSuccess = true;
+                  sent = true;
+                  break;
+                } catch (err) {
+                  // Retry next endpoint only on network errors (connection refused/timeouts)
+                  if (!axios.isAxiosError(err) || !err.response) {
+                    continue;
+                  }
+                  // Non-network error: stop retrying this parent
+                  throw err;
+                }
+              }
+              if (!sent) {
+                throw new Error("All Pushy endpoints unreachable");
+              }
+            } catch (error) {
+              console.error(`❌ Failed to send notification for parent ${parentId}:`, error);
+            }
+          }
+        } catch (error) {
+          console.warn("Pushy notifications failed, but bills were created successfully:", error);
+        }
+      } else {
+        console.log("Skipping notifications - axios unavailable or not in browser environment");
+      }
   
-      alert("Bills created and Pushy notifications sent to mobile devices successfully!");
+      if (typeof window !== 'undefined' && typeof axios !== 'undefined') {
+        if (notificationSuccess) {
+          alert("Bills created and Pushy notifications sent to mobile devices successfully!");
+          
+        } else {
+          alert("Bills created successfully! Pushy notifications could not be sent.");
+        }
+      } else {
+        alert("Bills created successfully!");
+      }
   
-      // 4️⃣ Reset form and selections
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
         duePeriod: 14,
@@ -350,14 +430,13 @@ function CreateBill() {
   
     } catch (error) {
       console.error("Error creating bills:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      setError(`Failed to create bills: ${errorMessage}`);
       alert("Failed to create bills. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
-  
-  
-  
 
   const total = items.reduce((sum, item) => sum + item.amount, 0);
 
@@ -366,6 +445,23 @@ function CreateBill() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="spinner-border text-primary" role="status">
           <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="alert alert-danger" role="alert">
+          <h4 className="alert-heading">Error Loading Page</h4>
+          <p>{error}</p>
+          <button 
+            className="btn btn-outline-danger" 
+            onClick={() => window.location.reload()}
+          >
+            Reload Page
+          </button>
         </div>
       </div>
     );
@@ -619,7 +715,7 @@ function CreateBill() {
                         <span className="fw-bold me-4">Total Amount:</span>
                         <span className="fs-4 fw-bold text-danger">
                           RM {total.toFixed(2)}
-                         </span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -635,11 +731,23 @@ function CreateBill() {
                     className="btn btn-primary d-flex align-items-center gap-2"
                     disabled={
                       !selectedStudentIds.length ||
-                      !items.some((item) => item.amount > 0)
+                      !items.some((item) => item.amount > 0) ||
+                      isSubmitting
                     }
                   >
-                    <Save className="w-4 h-4 me-2" size={16} />
-                    Save Bill
+                    {isSubmitting ? (
+                      <>
+                        <div className="spinner-border spinner-border-sm" role="status">
+                          <span className="visually-hidden">Loading...</span>
+                        </div>
+                        Creating Bills...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 me-2" size={16} />
+                        Save Bill
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
