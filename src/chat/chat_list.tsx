@@ -62,7 +62,8 @@ export function ChatList() {
               }
               return {
                 id: chat.id,
-                name: `${chat.studentName} (${chat.parentName})`,
+                // Show teacher as recipient since parents are sending messages to teachers
+                name: `Chat with ${chat.parentName} - ${chat.studentName}`,
                 lastMessage: chat.lastMessage || 'No messages yet',
                 time,
                 unread: chat.unreadWeb || 0 // Use web-specific unread count

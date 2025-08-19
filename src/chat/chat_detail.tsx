@@ -101,9 +101,9 @@ export function ChatDetail() {
       <div className="p-3 border-bottom bg-light d-flex align-items-center flex-shrink-0">
         <div>
           <h5 className="mb-0">
-            {chatInfo.studentName && <span>{chatInfo.studentName} </span>}
-            {chatInfo.parentName && <span>({chatInfo.parentName})</span>}
-            {!chatInfo.studentName && !chatInfo.parentName && chatInfo.name}
+            {/* Show that this is a chat with the parent about their child */}
+            Chat with {chatInfo.parentName}
+            {chatInfo.studentName && <span className="text-muted"> - {chatInfo.studentName}</span>}
           </h5>
         </div>
       </div>

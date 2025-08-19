@@ -27,6 +27,7 @@ export type Chat = {
     unreadMobile?: number; // Unread count for mobile users
     image?: string;
     webUser: string;
+    teacherName: string;
 };
 
 export class ChatService {
@@ -82,6 +83,7 @@ export class ChatService {
             studentName: string;
             parentName: string;
             webUser: string;
+            teacherName: string;
         }
     ) {
         try {
@@ -113,6 +115,7 @@ export class ChatService {
                 webUser: teacherId,
                 unreadMobile: newMobileUnread, // Increment unread for mobile user
                 unreadWeb: 0, // Reset web unread since web user sent the message
+                teacherName: teacherName,
             });
 
             // Send push notification to parent via Pushy helper
@@ -154,12 +157,14 @@ export class ChatService {
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
             const teacherId = await this.getCurrentTeacherId();
+            const teacherName = await this.getCurrentTeacherName();
             const chatRef = collection(db, 'chats');
             const chatDoc = await addDoc(chatRef, {
                 parentId,
                 studentName,
                 parentName,
                 webUser: teacherId,
+                teacherName: teacherName,
                 createdAt: serverTimestamp(),
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
@@ -198,6 +203,7 @@ export class ChatService {
                     unreadMobile: data.unreadMobile || 0,
                     image: data.image,
                     webUser: data.webUser,
+                    teacherName: data.teacherName,
                 });
             });
             callback(chats);
@@ -231,6 +237,7 @@ export class ChatService {
                     unreadMobile: data.unreadMobile || 0,
                     image: data.image,
                     webUser: data.webUser,
+                    teacherName: data.teacherName,
                 });
             });
             callback(chats);
