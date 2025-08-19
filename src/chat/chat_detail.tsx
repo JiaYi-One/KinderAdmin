@@ -11,6 +11,7 @@ export function ChatDetail() {
     avatar: "",
     studentName: "",
     parentName: "",
+    webUser: "", // Add webUser to track who sent messages from web
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -20,6 +21,16 @@ export function ChatDetail() {
 
   useEffect(() => {
     if (!id) return
+
+    // Mark chat as read when opening
+    const markAsRead = async () => {
+      try {
+        await ChatService.markChatAsRead(id)
+      } catch (error) {
+        console.error('Error marking chat as read:', error)
+      }
+    }
+    markAsRead()
 
     // Subscribe to messages for this chat
     const unsubscribe = ChatService.subscribeToMessages(id, (updatedMessages) => {
@@ -44,6 +55,7 @@ export function ChatDetail() {
           avatar: currentChat.image || "",
           studentName: currentChat.studentName,
           parentName: currentChat.parentName,
+          webUser: currentChat.webUser, // Store the webUser ID
         })
       }
     })
@@ -58,10 +70,10 @@ export function ChatDetail() {
     try {
       await ChatService.sendMessage(id, {
         content: newMessage,
-        sender: "ADMIN",
+        sender: "Teacher 2", // Use actual teacher name instead of hardcoded "ADMIN"
         studentName: chatInfo.studentName,
         parentName: chatInfo.parentName,
-        webUser: "ADMIN",
+        webUser: chatInfo.webUser, // Use the actual webUser ID from chat
       })
       setNewMessage("")
       // Scroll to bottom instantly after sending message
@@ -101,13 +113,14 @@ export function ChatDetail() {
         {messages.length > 0 ? (
           <>
             {messages.map((message) => {
-              const isAdmin = message.sender === "ADMIN";
+              // Check if message was sent by web user (teacher/admin) vs mobile user (parent)
+              const isWebUser = message.webUser === chatInfo.webUser;
               return (
                 <div
                   key={message.id}
-                  className={`d-flex mb-3 ${isAdmin ? 'justify-content-end' : 'justify-content-start'}`}
+                  className={`d-flex mb-3 ${isWebUser ? 'justify-content-end' : 'justify-content-start'}`}
                 >
-                  {!isAdmin && (
+                  {!isWebUser && (
                     <div className="me-2 flex-shrink-0">
                       <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
                         <span className="text-white">{message.sender[0]}</span>
@@ -115,25 +128,24 @@ export function ChatDetail() {
                     </div>
                   )}
                   <div
-                    className={`p-3 rounded-3 ${isAdmin ? 'bg-primary text-white' : 'bg-light'}`}
+                    className={`p-3 rounded-3 ${isWebUser ? 'bg-primary text-white' : 'bg-light'}`}
                     style={{ maxWidth: '70%' }}
                   >
-                    {!isAdmin && (
-                      <div className="d-flex align-items-center mb-1">
-                        <small className="text-muted">
-                          {message.studentName} ({message.parentName})
-                        </small>
-                      </div>
-                    )}
+                    {/* Show sender name for all messages */}
+                    <div className="d-flex align-items-center mb-1">
+                      <small className={`${isWebUser ? 'text-white-50' : 'text-muted'}`}>
+                        {isWebUser ? message.sender : message.parentName}
+                      </small>
+                    </div>
                     <p className="mb-0">{message.content}</p>
-                    <small className={`mt-1 d-block ${isAdmin ? 'text-white-50' : 'text-muted'}`}>
+                    <small className={`mt-1 d-block ${isWebUser ? 'text-white-50' : 'text-muted'}`}>
                       {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </small>
                   </div>
-                  {isAdmin && (
+                  {isWebUser && (
                     <div className="ms-2 flex-shrink-0">
                       <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
-                        <span className="text-white">A</span>
+                        <span className="text-white">{message.sender[0]}</span>
                       </div>
                     </div>
                   )}

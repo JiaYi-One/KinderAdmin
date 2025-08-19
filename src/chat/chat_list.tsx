@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Search } from "lucide-react"
 import { getAuth } from "firebase/auth"
-import { getFirestore, collection, query, where, getDocs, orderBy } from "firebase/firestore"
+import {  collection, query, where, getDocs,  } from "firebase/firestore"
 import { db } from "../firebase"
 import { ChatService, Chat as ChatType } from "./chat_service"
 
@@ -24,12 +24,11 @@ export function ChatList() {
   const [showNewChat, setShowNewChat] = useState(false)
 
   useEffect(() => {
-    const fetchChatsForStaff = async () => {
+    const subscribeToChatsForStaff = async () => {
       const auth = getAuth();
       const user = auth.currentUser;
       if (!user) return;
 
-      const db = getFirestore();
       try {
         // 1. Find staff document by teacherEmail
         const staffQuery = query(collection(db, "staff"), where("teacherEmail", "==", user.email));
@@ -40,56 +39,69 @@ export function ChatList() {
           const staffData = staffDoc.data();
           const teacherID = staffData.teacherID;
 
-          // 2. Query chats collection for all chats where teacherId matches
-          const chatsQuery = query(
-            collection(db, "chats"),
-            where("teacherId", "==", teacherID),
-            orderBy("lastMessageTime", "desc")
-          );
-          
-          const chatsSnapshot = await getDocs(chatsQuery);
-          
-          const formatChatTime = (date: Date) => {
-            const now = new Date();
-            const diffMs = now.getTime() - date.getTime();
-            const diffHours = diffMs / (1000 * 60 * 60);
-            if (diffHours < 24) {
-              return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-            } else {
-              return date.toISOString().slice(0, 10);
-            }
-          };
-
-          const chatList: Chat[] = chatsSnapshot.docs.map(doc => {
-            const data = doc.data();
-            let time = '';
-            if (data.lastMessageTime && data.lastMessageTime.toDate) {
-              time = formatChatTime(data.lastMessageTime.toDate());
-            }
-            return {
-              id: doc.id,
-              name: `${data.studentName} (${data.parentName})`,
-              lastMessage: data.lastMessage || 'No messages yet',
-              time,
-              unread: data.unread || 0
+          // 2. Subscribe to real-time chat updates using webUser field
+          const unsubscribe = ChatService.subscribeToChats((chats: ChatType[]) => {
+            // Filter chats for current teacher using webUser field
+            const teacherChats = chats.filter(chat => chat.webUser === teacherID);
+            
+            const formatChatTime = (date: Date) => {
+              const now = new Date();
+              const diffMs = now.getTime() - date.getTime();
+              const diffHours = diffMs / (1000 * 60 * 60);
+              if (diffHours < 24) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+              } else {
+                return date.toISOString().slice(0, 10);
+              }
             };
+
+            const chatList: Chat[] = teacherChats.map(chat => {
+              let time = '';
+              if (chat.lastMessageTime) {
+                time = formatChatTime(chat.lastMessageTime);
+              }
+              return {
+                id: chat.id,
+                name: `${chat.studentName} (${chat.parentName})`,
+                lastMessage: chat.lastMessage || 'No messages yet',
+                time,
+                unread: chat.unreadWeb || 0 // Use web-specific unread count
+              };
+            });
+            
+            setChats(chatList);
           });
-          
-          setChats(chatList);
+
+          // Return cleanup function
+          return unsubscribe;
         } else {
           console.log("No staff document found for current user");
           setChats([]);
         }
       } catch (error) {
-        console.error("Error fetching chats:", error);
+        console.error("Error setting up chat subscription:", error);
         setChats([]);
       }
     };
 
-    fetchChatsForStaff();
+    const unsubscribePromise = subscribeToChatsForStaff();
+
+    return () => {
+      unsubscribePromise.then(unsubscribe => {
+        if (unsubscribe) unsubscribe();
+      });
+    };
   }, []);
 
-  const handleChatClick = (chatId: string) => {
+  const handleChatClick = async (chatId: string, unreadCount: number) => {
+    // Mark chat as read when clicking to open
+    if (unreadCount > 0) {
+      try {
+        await ChatService.markChatAsRead(chatId);
+      } catch (error) {
+        console.error('Error marking chat as read:', error);
+      }
+    }
     navigate(`/chat/${chatId}`, { replace: true })
   }
 
@@ -134,7 +146,7 @@ export function ChatList() {
                   className={`list-group-item list-group-item-action py-3 ${
                     isActive ? 'active bg-primary text-white' : ''
                   }`}
-                  onClick={() => handleChatClick(chat.id)}
+                  onClick={() => handleChatClick(chat.id, chat.unread)}
                   style={{ 
                     cursor: 'pointer',
                     borderLeft: isActive ? '4px solid #0d6efd' : '4px solid transparent',
