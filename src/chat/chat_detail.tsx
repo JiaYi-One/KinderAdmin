@@ -12,6 +12,7 @@ export function ChatDetail() {
     studentName: "",
     parentName: "",
     webUser: "", // Add webUser to track who sent messages from web
+    teacherName: "", // Add teacherName to store current teacher's name
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -56,6 +57,7 @@ export function ChatDetail() {
           studentName: currentChat.studentName,
           parentName: currentChat.parentName,
           webUser: currentChat.webUser, // Store the webUser ID
+          teacherName: currentChat.teacherName, // Store the teacher's name
         })
       }
     })
@@ -70,10 +72,11 @@ export function ChatDetail() {
     try {
       await ChatService.sendMessage(id, {
         content: newMessage,
-        sender: "Teacher 2", // Use actual teacher name instead of hardcoded "ADMIN"
+        sender: chatInfo.teacherName, // Use actual teacher name instead of hardcoded "ADMIN"
         studentName: chatInfo.studentName,
         parentName: chatInfo.parentName,
-        webUser: chatInfo.webUser, // Use the actual webUser ID from chat
+        webUser: chatInfo.webUser,
+        teacherName: chatInfo.teacherName,
       })
       setNewMessage("")
       // Scroll to bottom instantly after sending message

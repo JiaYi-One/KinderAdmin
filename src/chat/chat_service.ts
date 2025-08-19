@@ -88,11 +88,10 @@ export class ChatService {
     ) {
         try {
             const teacherId = await this.getCurrentTeacherId();
-            const teacherName = await this.getCurrentTeacherName();
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
                 ...message,
-                sender: teacherName, // override with actual teacher name
+                sender: message.teacherName, // Use the teacher name passed in the message
                 webUser: teacherId,
                 timestamp: serverTimestamp(),
                 isRead: false,
@@ -111,11 +110,11 @@ export class ChatService {
             await updateDoc(chatDocRef, {
                 lastMessage: message.content,
                 lastMessageTime: serverTimestamp(),
-                lastMessageSender: teacherName,
+                lastMessageSender: message.teacherName, // Use the teacher name from message
                 webUser: teacherId,
                 unreadMobile: newMobileUnread, // Increment unread for mobile user
                 unreadWeb: 0, // Reset web unread since web user sent the message
-                teacherName: teacherName,
+                teacherName: message.teacherName, // Use the teacher name from message
             });
 
             // Send push notification to parent via Pushy helper
@@ -123,7 +122,7 @@ export class ChatService {
                 await sendPushy(db, {
                     parentId: chatData.parentId,
                     type: 'chat',
-                    title: `New message from ${teacherName}`,
+                    title: `New message from ${message.teacherName}`, // Use teacher name from message
                     message: message.content,
                     entityId: chatId,
                 });
