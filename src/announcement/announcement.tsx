@@ -46,6 +46,7 @@ import { Announcement, AnnouncementComment, User as UserType, FormData, NewComme
 import { db } from "../firebase"
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, getDoc } from "firebase/firestore"
 import { getAuth, onAuthStateChanged } from "firebase/auth"
+import { sendPushNotification } from "../notifications/pushyClient"
 
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -195,6 +196,56 @@ export default function AnnouncementsPage() {
     }
   }, [currentUser, fetchAnnouncements])
 
+  // Function to send announcement notifications to all parents
+  const sendAnnouncementNotifications = async (
+    announcementId: string,
+    title: string,
+    author: string,
+    category: string
+  ) => {
+    try {
+      // Get all parents
+      const parentsRef = collection(db, "parents")
+      const parentsSnapshot = await getDocs(parentsRef)
+      
+      const notificationPromises: Promise<boolean>[] = []
+      
+      for (const parentDoc of parentsSnapshot.docs) {
+        const parentId = parentDoc.id
+        const parentData = parentDoc.data()
+        
+        console.log("Debug - Parent info:", {
+          parentId: parentId,
+          parentEmail: parentData.email,
+          parentName: parentData.name
+        })
+        
+        const notificationPayload = {
+          parentId: parentId,
+          type: "announcement" as const,
+          title: `New ${category} Announcement`,
+          message: `${title} - From: ${author}`,
+          entityId: announcementId,
+          announcementId: announcementId, // Add explicit announcementId field
+        }
+        
+        console.log("Debug - Notification payload:", notificationPayload)
+        
+        // Send push notification only
+        const pushPromise = sendPushNotification(db, notificationPayload)
+        
+        notificationPromises.push(pushPromise)
+      }
+      
+      // Wait for all push notifications to be sent
+      await Promise.all(notificationPromises)
+      
+      console.log(`Sent announcement push notifications to ${parentsSnapshot.docs.length} parents`)
+    } catch (error) {
+      console.error("Error sending announcement notifications:", error)
+    }
+  }
+
   const handleCreateAnnouncement = async () => {
     if (!formData.title?.trim() || !formData.content?.trim() || !formData.category || !currentUser) {
       alert("Please fill in all required fields.")
@@ -209,6 +260,7 @@ export default function AnnouncementsPage() {
       const announcementId = newAnnouncementRef.id
       
       const announcementData = {
+        id: announcementId,
         title: formData.title,
         content: formData.content,
         author: currentUser.name,
@@ -242,6 +294,14 @@ export default function AnnouncementsPage() {
       setAnnouncements([newAnnouncement, ...announcements])
       setFormData({ title: "", content: "", category: "" })
       setIsCreateDialogOpen(false)
+
+      // Send notifications to all parents
+      await sendAnnouncementNotifications(
+        announcementId,
+        formData.title,
+        currentUser.name,
+        formData.category
+      )
     } catch (error) {
       console.error("Error creating announcement:", error)
       alert("Error creating announcement. Please try again.")
@@ -879,6 +939,8 @@ export default function AnnouncementsPage() {
                                   </Box>
                                 </Box>
                               }
+                              primaryTypographyProps={{ component: 'div' }}
+                              secondaryTypographyProps={{ component: 'div' }}
                             />
                           </ListItem>
                           
@@ -953,6 +1015,8 @@ export default function AnnouncementsPage() {
                                         </Typography>
                                       </Box>
                                     }
+                                    primaryTypographyProps={{ component: 'div' }}
+                                    secondaryTypographyProps={{ component: 'div' }}
                                   />
                                 </ListItem>
                               ))}

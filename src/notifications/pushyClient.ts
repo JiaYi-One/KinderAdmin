@@ -7,6 +7,7 @@ export interface PushNotificationPayload {
   type?: "new_bill" | "announcement" | "report" | "chat";
   title?: string;
   entityId?: string;
+  announcementId?: string; // Add announcement ID field
   billCount?: number;
   totalAmount?: number;
   parentEmail?: string;
