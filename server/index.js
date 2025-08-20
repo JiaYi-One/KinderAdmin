@@ -26,7 +26,7 @@ app.get('/health', (_req, res) => {
 
 // Pushy notification endpoint
 app.post('/pushy', async (req, res) => {
-    const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId } = req.body || {};
+    const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId, teacherName, studentName, parentName } = req.body || {};
 
     console.log('📨 Notification request:', { parentId, message, billCount, totalAmount, type, title, tokens: deviceTokens?.length || 0 });
 
@@ -65,6 +65,13 @@ app.post('/pushy', async (req, res) => {
                                 ...(type === 'chat' && entityId
                                     ? { chatId: entityId }
                                     : {}),
+                                // For chat notifications, include structured metadata consumed by mobile
+                                ...(type === 'chat' ? {
+                                    teacherName: teacherName,
+                                    studentName: studentName,
+                                    parentName: parentName,
+                                    content: message,
+                                } : {}),
                                 title: computedTitle,
                             },
                             notification: {

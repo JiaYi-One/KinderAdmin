@@ -125,6 +125,11 @@ export class ChatService {
                     title: `New message from ${message.teacherName}`, // Use teacher name from message
                     message: message.content,
                     entityId: chatId,
+                    // Provide structured fields so mobile can render proper names
+                    teacherName: message.teacherName,
+                    studentName: message.studentName,
+                    parentName: message.parentName,
+                    content: message.content,
                 });
             }
 
@@ -152,7 +157,7 @@ export class ChatService {
         });
     }
 
-    // Create a new chat
+    // Create a new chatS
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
             const teacherId = await this.getCurrentTeacherId();

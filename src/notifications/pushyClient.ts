@@ -12,6 +12,11 @@ export interface PushNotificationPayload {
   totalAmount?: number;
   parentEmail?: string;
   billNumbers?: string[];
+  // Chat-specific optional fields
+  teacherName?: string;
+  studentName?: string;
+  parentName?: string;
+  content?: string;
 }
 
 export interface SendOptions {
