@@ -6,6 +6,10 @@ export function ChatDetail() {
   const { id } = useParams()
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
+  const [, setIsSending] = useState(false)
+  const lastSentContentRef = useRef<string>("")
+  const lastSentAtRef = useRef<number>(0)
+  const inFlightContentRef = useRef<string>("")
   const [chatInfo, setChatInfo] = useState({
     name: "",
     avatar: "",
@@ -70,20 +74,42 @@ export function ChatDetail() {
     if (!newMessage.trim() || !id) return
 
     try {
+      const messageToSend = newMessage.trim()
+      // Prevent duplicate submissions of the same content
+      const now = Date.now()
+      if (inFlightContentRef.current === messageToSend) return
+      if (
+        lastSentContentRef.current === messageToSend &&
+        now - lastSentAtRef.current < 2000
+      ) {
+        return
+      }
+
+      setIsSending(true)
+      inFlightContentRef.current = messageToSend
+      // Optimistically clear input so it doesn't linger while sending
+      setNewMessage("")
+
       await ChatService.sendMessage(id, {
-        content: newMessage,
+        content: messageToSend,
         sender: chatInfo.teacherName, // Use actual teacher name instead of hardcoded "ADMIN"
         studentName: chatInfo.studentName,
         parentName: chatInfo.parentName,
         webUser: chatInfo.webUser,
         teacherName: chatInfo.teacherName,
       })
-      setNewMessage("")
+      lastSentContentRef.current = messageToSend
+      lastSentAtRef.current = now
       // Scroll to bottom instantly after sending message
       requestAnimationFrame(scrollToBottom)
     } catch (error) {
       console.error("Error sending message:", error)
+      // Restore input so user doesn't lose the message on error
+      setNewMessage((prev) => prev || newMessage)
       // You might want to show an error message to the user here
+    } finally {
+      setIsSending(false)
+      inFlightContentRef.current = ""
     }
   }
 
@@ -105,7 +131,7 @@ export function ChatDetail() {
         <div>
           <h5 className="mb-0">
             {/* Show that this is a chat with the parent about their child */}
-            Chat with {chatInfo.parentName}
+            {chatInfo.parentName}
             {chatInfo.studentName && <span className="text-muted"> - {chatInfo.studentName}</span>}
           </h5>
         </div>
@@ -118,6 +144,10 @@ export function ChatDetail() {
             {messages.map((message) => {
               // Check if message was sent by web user (teacher/admin) vs mobile user (parent)
               const isWebUser = message.webUser === chatInfo.webUser;
+              const displayName = isWebUser
+                ? (message.sender || chatInfo.teacherName || 'Teacher')
+                : (message.parentName || chatInfo.parentName || 'Parent');
+              const displayInitial = (displayName || '?').charAt(0).toUpperCase();
               return (
                 <div
                   key={message.id}
@@ -126,7 +156,7 @@ export function ChatDetail() {
                   {!isWebUser && (
                     <div className="me-2 flex-shrink-0">
                       <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
-                        <span className="text-white">{message.sender[0]}</span>
+                        <span className="text-white">{displayInitial}</span>
                       </div>
                     </div>
                   )}
@@ -136,9 +166,7 @@ export function ChatDetail() {
                   >
                     {/* Show sender name for all messages */}
                     <div className="d-flex align-items-center mb-1">
-                      <small className={`${isWebUser ? 'text-white-50' : 'text-muted'}`}>
-                        {isWebUser ? message.sender : message.parentName}
-                      </small>
+                      <small className={`${isWebUser ? 'text-white-50' : 'text-muted'}`}>{displayName}</small>
                     </div>
                     <p className="mb-0">{message.content}</p>
                     <small className={`mt-1 d-block ${isWebUser ? 'text-white-50' : 'text-muted'}`}>
@@ -148,7 +176,7 @@ export function ChatDetail() {
                   {isWebUser && (
                     <div className="ms-2 flex-shrink-0">
                       <div className="rounded-circle bg-primary d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
-                        <span className="text-white">{message.sender[0]}</span>
+                        <span className="text-white">{displayInitial}</span>
                       </div>
                     </div>
                   )}
@@ -175,7 +203,7 @@ export function ChatDetail() {
             onChange={(e) => setNewMessage(e.target.value)}
             autoFocus
           />
-          <button type="submit" className="btn btn-primary">
+          <button type="submit" className="btn btn-primary" disabled={!newMessage.trim()}>
             Send
           </button>
         </form>
