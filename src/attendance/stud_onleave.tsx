@@ -2,38 +2,17 @@ import React, { useState, useEffect } from "react";
 import {
   Typography, Chip, CircularProgress, Button,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  FormControl, InputLabel, Select, MenuItem, TextField
+  FormControl, InputLabel, Select, MenuItem, TextField,
+  Dialog, DialogTitle, DialogContent, IconButton, Tooltip
 } from "@mui/material";
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import GroupIcon from '@mui/icons-material/Group';
+import CloseIcon from '@mui/icons-material/Close';
 import { Link } from 'react-router-dom';
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
-import AttendanceDataService from "./attendanceService";
-
-interface LeaveApplicationData {
-  id: string;
-  absenceType: string;
-  classId: string;
-  documents?: {
-    endDate: string;
-    parentId: string;
-    reason: string;
-    startDate: string;
-    status: string;
-    studentId: string;
-    studentName: string;
-    submittedAt: string;
-    workingDays: number;
-  };
-  studentId?: string;
-  startDate?: string;
-  endDate?: string;
-  reason?: string;
-  submittedAt?: string;
-}
 
 interface ClassData {
   id: string;
@@ -41,7 +20,6 @@ interface ClassData {
   students: number;
   grade: string;
 }
-
 
 interface LeaveStudentData {
   studentId: string;
@@ -51,6 +29,7 @@ interface LeaveStudentData {
   leaveDate: string;
   status: string;
   reason?: string;
+  imageUrls?: string[];
 }
 
 const StudOnLeave: React.FC = () => {
@@ -60,6 +39,9 @@ const StudOnLeave: React.FC = () => {
   const [leaveStudents, setLeaveStudents] = useState<LeaveStudentData[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalLeaveStudents, setTotalLeaveStudents] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [previewTitle, setPreviewTitle] = useState<string>("");
 
   // Fetch all classes
   useEffect(() => {
@@ -92,150 +74,62 @@ const StudOnLeave: React.FC = () => {
     fetchAllClasses();
   }, []);
 
-  // Fetch students on leave
+  // Fetch students with leave applications
   useEffect(() => {
     const fetchLeaveStudents = async () => {
       setLoading(true);
       try {
-        const classesToCheck = selectedClass === "all" ? 
-          allClasses.map(cls => cls.id) : [selectedClass];
-
-        // First, get students on leave from attendance data
-        const attendancePromises = classesToCheck.map(async (classId) => {
-          try {
-            const result = await AttendanceDataService.fetchClassAttendance(classId, selectedDate);
-            const leaveStudentsInClass = result.students.filter(student => 
-              student.status === "on leave"
-            );
-
-            return leaveStudentsInClass.map(student => {
+        // Get leave applications directly from Firestore
+        const leaveQuery = query(collection(db, "leave_applications"));
+        const leaveSnapshot = await getDocs(leaveQuery);
+        
+        const leaveStudents: LeaveStudentData[] = [];
+        
+        leaveSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          const studentId = data.studentId;
+          const classId = data.classId;
+          const startDate = data.startDate;
+          const endDate = data.endDate;
+          
+          // Filter by class if specified
+          if (selectedClass !== "all" && classId !== selectedClass) {
+            return;
+          }
+          
+          // Check if selected date falls within leave period
+          if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const selected = new Date(selectedDate);
+            
+            // Reset time for accurate date comparison
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+            selected.setHours(12, 0, 0, 0);
+            
+            if (selected.getTime() >= start.getTime() && selected.getTime() <= end.getTime()) {
               const className = allClasses.find(cls => cls.id === classId)?.name || classId;
-              return {
-                studentId: student.id,
-                studentName: student.name,
+              const documents = Array.isArray(data.documents) ? data.documents : [];
+              
+              leaveStudents.push({
+                studentId: studentId,
+                studentName: data.studentName || "Unknown",
                 classId: classId,
                 className: className,
                 leaveDate: selectedDate,
-                status: student.status,
-                reason: ""
-              };
-            });
-          } catch (error) {
-            console.error(`Error fetching leave data for class ${classId}:`, error);
-            return [];
-          }
-        });
-
-        // Wait for all attendance API calls to complete in parallel
-        const attendanceResults = await Promise.all(attendancePromises);
-        const allLeaveStudents = attendanceResults.flat();
-
-        // Now fetch leave application details for these students
-        const leaveDetailsPromises = allLeaveStudents.map(async (student) => {
-          try {
-            console.log(`Fetching leave details for student: ${student.studentId} (${student.studentName})`);
-            
-            // Get all leave applications and filter client-side for better debugging
-            const leaveQuery = query(collection(db, "leave_applications"));
-            const leaveSnapshot = await getDocs(leaveQuery);
-            
-            let leaveReason = "No reason provided";
-            const matchingApplications: LeaveApplicationData[] = [];
-            
-            // Filter documents that match our student
-            leaveSnapshot.docs.forEach(doc => {
-              const data = doc.data();
-              console.log(`Checking document ${doc.id}:`, data);
-              
-              // Check different possible structures
-              if (data.documents && data.documents.studentId === student.studentId) {
-                console.log(`Found matching student in document ${doc.id} via documents.studentId`);
-                matchingApplications.push({
-                    id: doc.id, ...data,
-                    absenceType: "",
-                    classId: ""
-                });
-              } else if (data.studentId === student.studentId) {
-                console.log(`Found matching student in document ${doc.id} via direct studentId`);
-                matchingApplications.push({
-                    id: doc.id, ...data,
-                    absenceType: "",
-                    classId: ""
-                });
-              }
-            });
-            
-            console.log(`Found ${matchingApplications.length} matching applications for student ${student.studentId}`);
-            
-            if (matchingApplications.length > 0) {
-              // Sort by submittedAt to get the most recent
-              matchingApplications.sort((a, b) => {
-                const dateA = a.documents?.submittedAt || a.submittedAt || '1970-01-01';
-                const dateB = b.documents?.submittedAt || b.submittedAt || '1970-01-01';
-                return new Date(dateB).getTime() - new Date(dateA).getTime();
+                status: "on leave",
+                reason: data.reason || data.absenceType || "No reason provided",
+                imageUrls: documents,
               });
-              
-              const latestLeave = matchingApplications[0];
-              console.log(`Latest leave application for ${student.studentId}:`, latestLeave);
-              
-              // Get dates from the correct structure
-              const leaveData = latestLeave.documents || latestLeave;
-              const startDateStr = leaveData.startDate || latestLeave.startDate;
-              const endDateStr = leaveData.endDate || latestLeave.endDate;
-              
-              if (startDateStr && endDateStr) {
-                // Parse dates more carefully
-                const startDate = new Date(startDateStr);
-                const endDate = new Date(endDateStr);
-                const selectedDateObj = new Date(selectedDate);
-                
-                // Reset time to midnight for accurate date comparison
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                selectedDateObj.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
-                
-                console.log(`Leave period: ${startDate.toDateString()} to ${endDate.toDateString()}`);
-                console.log(`Selected date: ${selectedDateObj.toDateString()}`);
-                console.log(`Date comparison: ${selectedDateObj.getTime()} >= ${startDate.getTime()} && ${selectedDateObj.getTime()} <= ${endDate.getTime()}`);
-                
-                // Check if selected date falls within the leave period
-                if (selectedDateObj.getTime() >= startDate.getTime() && selectedDateObj.getTime() <= endDate.getTime()) {
-                  leaveReason = leaveData.reason || latestLeave.reason || latestLeave.absenceType || "No reason provided";
-                  console.log(`✅ Leave reason found for ${student.studentId}: ${leaveReason}`);
-                } else {
-                  console.log(`❌ Selected date ${selectedDate} is not within leave period for ${student.studentId}`);
-                  // Still show the reason even if date doesn't match exactly
-                  const reason = leaveData.reason || latestLeave.reason || latestLeave.absenceType || "No reason provided";
-                  leaveReason = reason;
-                }
-              } else {
-                console.log(`❌ Missing date information in leave application for ${student.studentId}`);
-                leaveReason = leaveData.reason || latestLeave.reason || latestLeave.absenceType || "No reason provided";
-              }
-            } else {
-              console.log(`❌ No leave applications found for student ${student.studentId}`);
             }
-            
-            return {
-              ...student,
-              reason: leaveReason
-            };
-          } catch (error) {
-            console.error(`Error fetching leave details for student ${student.studentId}:`, error);
-            return {
-              ...student,
-              reason: "Error loading reason"
-            };
           }
         });
-
-        // Wait for all leave details to be fetched
-        const finalResults = await Promise.all(leaveDetailsPromises);
         
-        setLeaveStudents(finalResults);
-        setTotalLeaveStudents(finalResults.length);
+        setLeaveStudents(leaveStudents);
+        setTotalLeaveStudents(leaveStudents.length);
       } catch (error) {
-        console.error('Error fetching leave students:', error);
+        console.error('Error fetching leave applications:', error);
       } finally {
         setLoading(false);
       }
@@ -397,6 +291,7 @@ const StudOnLeave: React.FC = () => {
                         <TableCell style={{ fontWeight: "bold" }}>Leave Date</TableCell>
                         <TableCell style={{ fontWeight: "bold" }}>Status</TableCell>
                         <TableCell style={{ fontWeight: "bold" }}>Leave Reason</TableCell>
+                        <TableCell style={{ fontWeight: "bold" }}>Evidence</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -438,6 +333,25 @@ const StudOnLeave: React.FC = () => {
                               {student.reason || "No reason provided"}
                             </Typography>
                           </TableCell>
+                          <TableCell>
+                            {student.imageUrls && student.imageUrls.length > 0 ? (
+                              <Tooltip title="View uploaded image(s)">
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  onClick={() => {
+                                    setPreviewImages(student.imageUrls || []);
+                                    setPreviewTitle(`${student.studentName} - Evidence`);
+                                    setPreviewOpen(true);
+                                  }}
+                                >
+                                  View Evidence ({student.imageUrls.length})
+                                </Button>
+                              </Tooltip>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">No image</Typography>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -448,6 +362,32 @@ const StudOnLeave: React.FC = () => {
           </div>
         </div>
       </div>
+             <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="xl" fullWidth>
+        <DialogTitle>
+          {previewTitle}
+          <IconButton onClick={() => setPreviewOpen(false)} style={{ position: 'absolute', right: 8, top: 8 }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+                 <DialogContent dividers>
+           {previewImages.length > 0 ? (
+             <div style={{ textAlign: 'center' }}>
+               <img 
+                 src={previewImages[0]} 
+                 alt="Evidence" 
+                                   style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '80vh',
+                    borderRadius: 8,
+                    objectFit: 'contain'
+                  }} 
+               />
+             </div>
+           ) : (
+             <Typography variant="body2" color="text.secondary">No images to display.</Typography>
+           )}
+         </DialogContent>
+      </Dialog>
     </div>
   );
 };
