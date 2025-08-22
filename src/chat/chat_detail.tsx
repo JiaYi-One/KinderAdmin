@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { ChatService, Message } from "./chat_service"
+import FileUpload from "../uploadImage"
+import "./chat_detail.css"
 
 export function ChatDetail() {
   const { id } = useParams()
@@ -8,7 +10,9 @@ export function ChatDetail() {
   const [newMessage, setNewMessage] = useState("")
   const [, setIsSending] = useState(false)
   const [loadingImages, setLoadingImages] = useState<Set<string>>(new Set())
+  const [, setProcessedMessages] = useState<Set<string>>(new Set()) // Used to track which messages we've already processed for loading states
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
   const lastSentContentRef = useRef<string>("")
   const lastSentAtRef = useRef<number>(0)
   const inFlightContentRef = useRef<string>("")
@@ -43,6 +47,10 @@ export function ChatDetail() {
   useEffect(() => {
     if (!id) return
 
+    // Reset loading states when chat changes
+    setLoadingImages(new Set())
+    setProcessedMessages(new Set())
+
     // Mark chat as read when opening
     const markAsRead = async () => {
       try {
@@ -57,17 +65,26 @@ export function ChatDetail() {
     const unsubscribe = ChatService.subscribeToMessages(id, (updatedMessages) => {
       setMessages(updatedMessages)
       
-      // Set loading state for new image messages
-      const newImageMessages = updatedMessages.filter(
-        msg => (msg.type === 'image' || isImageUrl(msg.content)) && !messages.some(existing => existing.id === msg.id)
-      );
-      if (newImageMessages.length > 0) {
-        setLoadingImages(prev => {
-          const newSet = new Set(prev);
-          newImageMessages.forEach(msg => newSet.add(msg.id));
-          return newSet;
+      // Set loading state for truly new image messages (not previously processed)
+      setProcessedMessages(prevProcessed => {
+        setLoadingImages(prevLoading => {
+          const newLoading = new Set(prevLoading);
+          
+          updatedMessages.forEach(msg => {
+            // Only add to loading if it's an image message and we haven't processed it before
+            if ((msg.type === 'image' || isImageUrl(msg.content)) && !prevProcessed.has(msg.id)) {
+              newLoading.add(msg.id);
+            }
+          });
+          
+          return newLoading;
         });
-      }
+        
+        // Update processed messages to include all current messages
+        const newProcessed = new Set(prevProcessed);
+        updatedMessages.forEach(msg => newProcessed.add(msg.id));
+        return newProcessed;
+      });
       
       // Scroll to bottom instantly after messages are loaded
       requestAnimationFrame(scrollToBottom)
@@ -155,6 +172,41 @@ export function ChatDetail() {
     }
   }
 
+  const handleFileUpload = async (fileUrl: string, fileName: string, fileSize: number, fileType: string) => {
+    if (!id) return
+
+    try {
+      setIsUploadingFile(true)
+      
+      // Only handle image uploads
+      if (!fileType.startsWith('image/')) {
+        alert('Only image files are allowed in chat.');
+        return;
+      }
+
+      await ChatService.sendFileMessage(id, {
+        content: fileUrl,
+        fileName: fileName,
+        fileSize: fileSize,
+        fileType: fileType,
+        sender: chatInfo.teacherName,
+        studentName: chatInfo.studentName,
+        parentName: chatInfo.parentName,
+        webUser: chatInfo.webUser,
+        teacherName: chatInfo.teacherName,
+        type: 'image',
+      })
+
+      // Scroll to bottom after sending file
+      requestAnimationFrame(scrollToBottom)
+    } catch (error) {
+      console.error("Error sending file message:", error)
+      alert('Failed to send image. Please try again.')
+    } finally {
+      setIsUploadingFile(false)
+    }
+  }
+
   if (!id) {
     return (
       <div className="d-flex flex-column align-items-center justify-content-center h-100 bg-light">
@@ -232,19 +284,25 @@ export function ChatDetail() {
                             setFullScreenImage(message.content);
                           }}
                           onLoad={() => {
-                            // Image loaded successfully
+                            // Image loaded successfully - only update if it was loading
                             setLoadingImages(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(message.id);
-                              return newSet;
+                              if (prev.has(message.id)) {
+                                const newSet = new Set(prev);
+                                newSet.delete(message.id);
+                                return newSet;
+                              }
+                              return prev;
                             });
                           }}
                           onError={(e) => {
-                            // Handle image load error
+                            // Handle image load error - only update if it was loading
                             setLoadingImages(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(message.id);
-                              return newSet;
+                              if (prev.has(message.id)) {
+                                const newSet = new Set(prev);
+                                newSet.delete(message.id);
+                                return newSet;
+                              }
+                              return prev;
                             });
                             const target = e.target as HTMLImageElement;
                             target.style.display = 'none';
@@ -256,6 +314,66 @@ export function ChatDetail() {
                           title="Click to view full size"
                         />
                      
+                      </div>
+                    ) : message.type === 'pdf' ? (
+                      <div className="chat-file-container">
+                        <div className="d-flex align-items-center p-2 border rounded bg-light">
+                          <i className="bi bi-file-pdf text-danger me-2" style={{ fontSize: '1.5rem' }}></i>
+                          <div className="flex-grow-1">
+                            <div className="fw-bold">{message.fileName || 'PDF Document'}</div>
+                            <small className="text-muted">
+                              {message.fileSize ? `${(message.fileSize / 1024 / 1024).toFixed(2)} MB` : ''}
+                            </small>
+                          </div>
+                          <a 
+                            href={message.content} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-download me-1"></i>View
+                          </a>
+                        </div>
+                      </div>
+                    ) : message.type === 'word' ? (
+                      <div className="chat-file-container">
+                        <div className="d-flex align-items-center p-2 border rounded bg-light">
+                          <i className="bi bi-file-word text-primary me-2" style={{ fontSize: '1.5rem' }}></i>
+                          <div className="flex-grow-1">
+                            <div className="fw-bold">{message.fileName || 'Word Document'}</div>
+                            <small className="text-muted">
+                              {message.fileSize ? `${(message.fileSize / 1024 / 1024).toFixed(2)} MB` : ''}
+                            </small>
+                          </div>
+                          <a 
+                            href={message.content} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-download me-1"></i>Download
+                          </a>
+                        </div>
+                      </div>
+                    ) : message.type === 'file' ? (
+                      <div className="chat-file-container">
+                        <div className="d-flex align-items-center p-2 border rounded bg-light">
+                          <i className="bi bi-file-earmark text-secondary me-2" style={{ fontSize: '1.5rem' }}></i>
+                          <div className="flex-grow-1">
+                            <div className="fw-bold">{message.fileName || 'File'}</div>
+                            <small className="text-muted">
+                              {message.fileSize ? `${(message.fileSize / 1024 / 1024).toFixed(2)} MB` : ''}
+                            </small>
+                          </div>
+                          <a 
+                            href={message.content} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="btn btn-sm btn-outline-primary"
+                          >
+                            <i className="bi bi-download me-1"></i>Download
+                          </a>
+                        </div>
                       </div>
                     ) : (
                       <p className="mb-0">{message.content}</p>
@@ -295,6 +413,13 @@ export function ChatDetail() {
             onChange={(e) => setNewMessage(e.target.value)}
             autoFocus
           />
+                     <FileUpload 
+             onFileUpload={handleFileUpload}
+             acceptedTypes={['.png', '.jpg', '.jpeg']}
+             maxSize={5}
+             className="flex-shrink-0"
+             disabled={isUploadingFile}
+           />
           <button type="submit" className="btn btn-primary" disabled={!newMessage.trim()}>
             Send
           </button>

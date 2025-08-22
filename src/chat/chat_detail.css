@@ -1,0 +1,128 @@
+.chat-file-container {
+  margin: 8px 0;
+}
+
+.chat-file-container .border {
+  border-color: #dee2e6 !important;
+}
+
+.chat-file-container .bg-light {
+  background-color: #f8f9fa !important;
+}
+
+.chat-file-container .btn-outline-primary {
+  border-color: #0d6efd;
+  color: #0d6efd;
+}
+
+.chat-file-container .btn-outline-primary:hover {
+  background-color: #0d6efd;
+  color: white;
+}
+
+.chat-image-container {
+  position: relative;
+  display: inline-block;
+}
+
+.chat-image {
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.chat-image:hover {
+  opacity: 0.9;
+}
+
+.chat-image-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.chat-image-error {
+  color: #dc3545;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 8px;
+}
+
+.fullscreen-image-modal {
+  backdrop-filter: blur(5px);
+}
+
+.file-upload-container {
+  display: inline-block;
+}
+
+.file-upload-container .btn {
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.file-upload-container .btn-outline-secondary {
+  border-color: #6c757d;
+  color: #6c757d;
+}
+
+.file-upload-container .btn-outline-secondary:hover {
+  background-color: #6c757d;
+  color: white;
+}
+
+.file-upload-container .btn:disabled,
+.file-upload-container .btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.file-upload-container .btn.disabled {
+  background-color: #e9ecef;
+  border-color: #dee2e6;
+  color: #6c757d;
+}
+
+/* Progress bar styling */
+.progress {
+  background-color: #e9ecef;
+  border-radius: 2px;
+}
+
+.progress-bar {
+  background-color: #0d6efd;
+  transition: width 0.3s ease;
+}
+
+/* Message input area styling */
+.message-input-container {
+  background-color: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+}
+
+/* File type icons */
+.bi-file-pdf {
+  color: #dc3545;
+}
+
+.bi-file-word {
+  color: #0d6efd;
+}
+
+.bi-file-earmark {
+  color: #6c757d;
+}
+
+.bi-image {
+  font-size: 1.1rem;
+  color: #28a745;
+}
+
+.bi-paperclip {
+  font-size: 1.1rem;
+}

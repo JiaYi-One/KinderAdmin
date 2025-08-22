@@ -11,7 +11,10 @@ export type Message = {
     studentName?: string;
     parentName?: string;
     webUser?: string;
-    type?: string; // Add type field to distinguish between 'text' and 'image' messages
+    type?: string; // Add type field to distinguish between 'text', 'image', 'pdf', 'word' messages
+    fileName?: string; // Add fileName for file messages
+    fileSize?: number; // Add fileSize for file messages
+    fileType?: string; // Add fileType for file messages
 };
 
 export type Chat = {
@@ -140,6 +143,76 @@ export class ChatService {
             return messageDoc.id;
         } catch (error) {
             console.error('Error sending message:', error);
+            throw error;
+        }
+    }
+
+    // Send a file message
+    static async sendFileMessage(
+        chatId: string,
+        fileMessage: {
+            content: string; // File URL
+            fileName: string;
+            fileSize: number;
+            fileType: string;
+            sender: string;
+            studentName: string;
+            parentName: string;
+            webUser: string;
+            teacherName: string;
+            type: string; // 'image', 'pdf', 'word'
+        }
+    ) {
+        try {
+            const teacherId = await this.getCurrentTeacherId();
+            const chatRef = collection(db, 'chats', chatId, 'messages');
+            const messageDoc = await addDoc(chatRef, {
+                ...fileMessage,
+                sender: fileMessage.teacherName,
+                webUser: teacherId,
+                timestamp: serverTimestamp(),
+                isRead: false,
+            });
+
+            // Get current chat data to properly handle unread counts
+            const chatDocRef = doc(db, 'chats', chatId);
+            const chatDoc = await getDoc(chatDocRef);
+            const chatData = chatDoc.exists() ? chatDoc.data() : {};
+
+            // Increment unread count for mobile user (parent) when web user sends message
+            const currentMobileUnread = chatData.unreadMobile || 0;
+            const newMobileUnread = currentMobileUnread + 1;
+
+            // Update the chat document with the latest message info and unread count
+            await updateDoc(chatDocRef, {
+                lastMessage: `📎 ${fileMessage.fileName}`,
+                lastMessageTime: serverTimestamp(),
+                lastMessageSender: fileMessage.teacherName,
+                lastMessageType: fileMessage.type,
+                webUser: teacherId,
+                unreadMobile: newMobileUnread,
+                unreadWeb: 0,
+                teacherName: fileMessage.teacherName,
+            });
+
+            // Send push notification to parent via Pushy helper
+            if (chatData.parentId) {
+                await sendPushy(db, {
+                    parentId: chatData.parentId,
+                    type: 'chat',
+                    title: `New file from ${fileMessage.teacherName}`,
+                    message: `📎 ${fileMessage.fileName}`,
+                    entityId: chatId,
+                    teacherName: fileMessage.teacherName,
+                    studentName: fileMessage.studentName,
+                    parentName: fileMessage.parentName,
+                    content: `📎 ${fileMessage.fileName}`,
+                });
+            }
+
+            return messageDoc.id;
+        } catch (error) {
+            console.error('Error sending file message:', error);
             throw error;
         }
     }
