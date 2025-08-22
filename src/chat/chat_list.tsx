@@ -23,6 +23,20 @@ export function ChatList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showNewChat, setShowNewChat] = useState(false)
 
+  // Helper function to detect if a message contains an image URL
+  const isImageUrl = (content: string): boolean => {
+    if (!content || typeof content !== 'string') return false;
+    
+    // Check if it's a Cloudinary URL (which the mobile app uses)
+    if (content.includes('res.cloudinary.com') && content.includes('/image/upload/')) {
+      return true;
+    }
+    
+    // Check for common image file extensions
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    return imageExtensions.some(ext => content.toLowerCase().includes(ext));
+  }
+
   useEffect(() => {
     const subscribeToChatsForStaff = async () => {
       const auth = getAuth();
@@ -60,11 +74,18 @@ export function ChatList() {
               if (chat.lastMessageTime) {
                 time = formatChatTime(chat.lastMessageTime);
               }
+              
+              // Format last message based on type (similar to Flutter app)
+              let displayMessage = chat.lastMessage || 'No messages yet';
+              if (chat.lastMessageType === 'image' || isImageUrl(chat.lastMessage)) {
+                displayMessage = '[Image]';
+              }
+              
               return {
                 id: chat.id,
                 // Show teacher as recipient since parents are sending messages to teachers
                 name: ` ${chat.parentName} - ${chat.studentName}`,
-                lastMessage: chat.lastMessage || 'No messages yet',
+                lastMessage: displayMessage,
                 time,
                 unread: chat.unreadWeb || 0 // Use web-specific unread count
               };

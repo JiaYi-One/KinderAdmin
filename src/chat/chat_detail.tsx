@@ -7,6 +7,8 @@ export function ChatDetail() {
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [, setIsSending] = useState(false)
+  const [loadingImages, setLoadingImages] = useState<Set<string>>(new Set())
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
   const lastSentContentRef = useRef<string>("")
   const lastSentAtRef = useRef<number>(0)
   const inFlightContentRef = useRef<string>("")
@@ -22,6 +24,20 @@ export function ChatDetail() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
+  }
+
+  // Helper function to detect if a message contains an image URL
+  const isImageUrl = (content: string): boolean => {
+    if (!content || typeof content !== 'string') return false;
+    
+    // Check if it's a Cloudinary URL (which the mobile app uses)
+    if (content.includes('res.cloudinary.com') && content.includes('/image/upload/')) {
+      return true;
+    }
+    
+    // Check for common image file extensions
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    return imageExtensions.some(ext => content.toLowerCase().includes(ext));
   }
 
   useEffect(() => {
@@ -40,6 +56,19 @@ export function ChatDetail() {
     // Subscribe to messages for this chat
     const unsubscribe = ChatService.subscribeToMessages(id, (updatedMessages) => {
       setMessages(updatedMessages)
+      
+      // Set loading state for new image messages
+      const newImageMessages = updatedMessages.filter(
+        msg => (msg.type === 'image' || isImageUrl(msg.content)) && !messages.some(existing => existing.id === msg.id)
+      );
+      if (newImageMessages.length > 0) {
+        setLoadingImages(prev => {
+          const newSet = new Set(prev);
+          newImageMessages.forEach(msg => newSet.add(msg.id));
+          return newSet;
+        });
+      }
+      
       // Scroll to bottom instantly after messages are loaded
       requestAnimationFrame(scrollToBottom)
     })
@@ -47,6 +76,18 @@ export function ChatDetail() {
     // Cleanup subscription on unmount
     return () => unsubscribe()
   }, [id])
+
+  // Handle ESC key for closing full-screen image
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && fullScreenImage) {
+        setFullScreenImage(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [fullScreenImage]);
 
   useEffect(() => {
     if (!id) return
@@ -97,6 +138,7 @@ export function ChatDetail() {
         parentName: chatInfo.parentName,
         webUser: chatInfo.webUser,
         teacherName: chatInfo.teacherName,
+        type: 'text', // Add message type for text messages
       })
       lastSentContentRef.current = messageToSend
       lastSentAtRef.current = now
@@ -168,7 +210,57 @@ export function ChatDetail() {
                     <div className="d-flex align-items-center mb-1">
                       <small className={`${isWebUser ? 'text-white-50' : 'text-muted'}`}>{displayName}</small>
                     </div>
-                    <p className="mb-0">{message.content}</p>
+                    
+                    {/* Display image or text based on message type */}
+                    {(message.type === 'image' || isImageUrl(message.content)) ? (
+                      <div className="chat-image-container">
+                        {loadingImages.has(message.id) && (
+                          <div className="chat-image-loading">
+                            <div className="spinner-border spinner-border-sm text-muted" role="status">
+                              <span className="visually-hidden">Loading...</span>
+                            </div>
+                          </div>
+                        )}
+                        <img 
+                          src={message.content} 
+                          alt="Chat image" 
+                          className="chat-image"
+                          style={{ display: loadingImages.has(message.id) ? 'none' : 'block', maxHeight: '30vh',
+                            maxWidth: '30vw' } } 
+                          onClick={() => {
+                            // Open image in full screen modal
+                            setFullScreenImage(message.content);
+                          }}
+                          onLoad={() => {
+                            // Image loaded successfully
+                            setLoadingImages(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(message.id);
+                              return newSet;
+                            });
+                          }}
+                          onError={(e) => {
+                            // Handle image load error
+                            setLoadingImages(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(message.id);
+                              return newSet;
+                            });
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const errorDiv = document.createElement('div');
+                            errorDiv.className = 'chat-image-error';
+                            errorDiv.innerHTML = '<i class="fas fa-image me-2"></i>Image failed to load';
+                            target.parentNode?.appendChild(errorDiv);
+                          }}
+                          title="Click to view full size"
+                        />
+                     
+                      </div>
+                    ) : (
+                      <p className="mb-0">{message.content}</p>
+                    )}
+                    
                     <small className={`mt-1 d-block ${isWebUser ? 'text-white-50' : 'text-muted'}`}>
                       {message.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </small>
@@ -208,6 +300,32 @@ export function ChatDetail() {
           </button>
         </form>
       </div>
+      
+      {/* Full-screen image modal */}
+      {fullScreenImage && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center fullscreen-image-modal"
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0.9)', 
+            zIndex: 1050 
+          }}
+          onClick={() => setFullScreenImage(null)}
+        >
+          <div className="position-relative">
+            <button
+              className="btn-close btn-close-white position-absolute top-0 end-0 m-3"
+              onClick={() => setFullScreenImage(null)}
+              style={{ zIndex: 1051 }}
+            />
+            <img
+              src={fullScreenImage}
+              alt="Full screen image"
+              className="img-fluid" style={{ maxHeight: '90vh', maxWidth: '90vw' }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

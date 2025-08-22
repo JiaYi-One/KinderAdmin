@@ -11,6 +11,7 @@ export type Message = {
     studentName?: string;
     parentName?: string;
     webUser?: string;
+    type?: string; // Add type field to distinguish between 'text' and 'image' messages
 };
 
 export type Chat = {
@@ -22,6 +23,7 @@ export type Chat = {
     lastMessage: string;
     lastMessageTime?: Date;
     lastMessageSender: string;
+    lastMessageType?: string; // Add field to track message type (text/image)
     unread?: number; // Legacy field for backward compatibility
     unreadWeb?: number; // Unread count for web users
     unreadMobile?: number; // Unread count for mobile users
@@ -84,6 +86,7 @@ export class ChatService {
             parentName: string;
             webUser: string;
             teacherName: string;
+            type?: string; // Add optional type field for message type
         }
     ) {
         try {
@@ -111,6 +114,7 @@ export class ChatService {
                 lastMessage: message.content,
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: message.teacherName, // Use the teacher name from message
+                lastMessageType: message.type || 'text', // Add message type
                 webUser: teacherId,
                 unreadMobile: newMobileUnread, // Increment unread for mobile user
                 unreadWeb: 0, // Reset web unread since web user sent the message
@@ -202,6 +206,7 @@ export class ChatService {
                     lastMessage: data.lastMessage,
                     lastMessageTime: data.lastMessageTime?.toDate(),
                     lastMessageSender: data.lastMessageSender,
+                    lastMessageType: data.lastMessageType,
                     unread: data.unread || 0,
                     unreadWeb: data.unreadWeb || 0,
                     unreadMobile: data.unreadMobile || 0,
@@ -236,6 +241,7 @@ export class ChatService {
                     lastMessage: data.lastMessage,
                     lastMessageTime: data.lastMessageTime?.toDate(),
                     lastMessageSender: data.lastMessageSender,
+                    lastMessageType: data.lastMessageType,
                     unread: data.unread || 0,
                     unreadWeb: data.unreadWeb || 0,
                     unreadMobile: data.unreadMobile || 0,

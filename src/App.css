@@ -1,0 +1,115 @@
+/* Chat Image Styles */
+.chat-image {
+    max-width: 120px;
+    max-height: 80px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    object-fit: cover;
+}
+
+.chat-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.chat-image-container {
+    margin-bottom: 8px;
+    position: relative;
+}
+
+/* Image loading state */
+.chat-image-loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 100% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: 8px;
+    min-height: 10px;
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Image error state */
+.chat-image-error {
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    min-height: 80px;
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+}
+
+/* Full-screen image modal */
+.fullscreen-image-modal {
+    backdrop-filter: blur(5px);
+}
+
+.fullscreen-image-modal img {
+    object-fit: contain;
+    max-height: 90vh;
+    max-width: 90vw;
+}
+
+/* Responsive image sizing */
+@media (max-width: 768px) {
+    .chat-image {
+        max-width: 500px;
+        max-height: 70px;
+    }
+
+    .fullscreen-image-modal img {
+        max-height: 85vh;
+        max-width: 95vw;
+    }
+}
+
+/* Additional image styling for better appearance */
+.chat-image-container {
+    overflow: hidden;
+    position: relative;
+}
+
+.chat-image-container::after {
+    content: '🔍';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border-radius: 10%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.chat-image-container:hover::after {
+    opacity: 1;
+}
+
+/* Ensure images don't break the chat layout */
+.chat-image-container img {
+    display: block;
+    width: auto;
+    height: auto;
+}
