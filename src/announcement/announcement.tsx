@@ -1083,18 +1083,13 @@ export default function AnnouncementsPage() {
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   {/* Left side: Avatar and User Info */}
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, flex: 1 }}>
-                    <Avatar 
-                      src={announcement.authorAvatar}
-                      sx={{ width: 48, height: 48, mt: 0.5 }}
-                    >
-                      {getInitials(announcement.author)}
-                    </Avatar>
+                    
                     
                     <Box sx={{ flex: 1 }}>
-                      {/* Top row: Name and Category */}
+                      {/* Top row: Title and Category */}
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                          {announcement.author}
+                          {announcement.title}
                         </Typography>
                         <Chip 
                           label={announcement.category} 
@@ -1104,9 +1099,9 @@ export default function AnnouncementsPage() {
                         />
                       </Box>
                       
-                      {/* Bottom row: Role */}
-                      <Typography variant="body2" sx={{ color: 'text.secondary', textTransform: 'capitalize' }}>
-                        {announcement.authorRole}
+                      {/* Bottom row: Teacher Name */}
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        By: {announcement.author}
                       </Typography>
                     </Box>
                   </Box>
@@ -1122,13 +1117,6 @@ export default function AnnouncementsPage() {
               
               {/* Divider */}
               <Divider />
-              
-              {/* Title Section */}
-              <Box sx={{ p: 3, pt: 2, pb: 1 }}>
-                <Typography variant="h5" component="h3" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                  {announcement.title}
-                </Typography>
-              </Box>
               
               {/* Description Section */}
               <Box sx={{ p: 3, pt: 1, pb: 1 }}>
