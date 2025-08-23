@@ -803,7 +803,7 @@ function StudReg() {
         </main>
 
         <footer className="mt-4 d-flex justify-content-between align-items-center text-sm text-muted">
-          <span>KinderCare Admin</span>
+        
           <div className="d-flex align-items-center gap-2">
             <Receipt className="w-4 h-4" />
             <span>Need help with registration?</span>

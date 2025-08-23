@@ -7,7 +7,6 @@ import {
   Users,
   Search,
   CheckCircle2,
-  Calendar,
 } from "lucide-react";
 import { db } from "../firebase";
 import {
@@ -43,8 +42,6 @@ interface Bill {
   totalAmount: number;
   billDate: string;
   dueDate: string;
-  duePeriod: number;
-  reference: string;
   billNumber: string;
   parentEmail?: string;
 }
@@ -57,9 +54,7 @@ interface BillItem {
 
 interface FormData {
   billDate: string;
-  duePeriod: number;
   dueDate: string;
-  reference: string;
   billNumber: string;
 }
 
@@ -77,19 +72,12 @@ function CreateBill() {
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
-    duePeriod: 14,
-    dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
-    reference: "",
+    dueDate: new Date().toISOString().split("T")[0],
     billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Function to calculate due date based on bill date and due period
-  function calculateDueDate(billDate: string, duePeriod: number): string {
-    const date = new Date(billDate);
-    date.setDate(date.getDate() + duePeriod);
-    return date.toISOString().split("T")[0];
-  }
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -252,17 +240,10 @@ function CreateBill() {
   ) => {
     const { name, value } = e.target;
     
-    setFormData((prev) => {
-      const newFormData = { ...prev, [name]: value };
-      
-      if (name === "billDate" || name === "duePeriod") {
-        const duePeriod = name === "duePeriod" ? Number(value) : prev.duePeriod;
-        const billDate = name === "billDate" ? value : prev.billDate;
-        newFormData.dueDate = calculateDueDate(billDate, duePeriod);
-      }
-      
-      return newFormData;
-    });
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -294,9 +275,7 @@ function CreateBill() {
           billId: billDocRef.id,
           billNumber: formData.billNumber,
           billDate: formData.billDate,
-          duePeriod: formData.duePeriod,
           dueDate: formData.dueDate,
-          reference: formData.reference,
           items: items,
           totalAmount: total,
           paymentStatus: "unpaid",
@@ -378,9 +357,7 @@ function CreateBill() {
   
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
-        duePeriod: 14,
-        dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
-        reference: "",
+        dueDate: new Date().toISOString().split("T")[0],
         billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
       });
       setSelectedStudentIds([]);
@@ -530,7 +507,7 @@ function CreateBill() {
               <div className="card-body">
                 {/* Bill Info */}
                 <div className="row mb-4">
-                  <div className="col-md-3">
+                  <div className="col-md-4">
                     <label className="form-label">Bill Date</label>
                     <input
                       type="date"
@@ -540,35 +517,17 @@ function CreateBill() {
                       className="form-control"
                     />
                   </div>
-                  <div className="col-md-3">
-                    <label className="form-label">Payment Term</label>
-                    <select
-                      name="duePeriod"
-                      value={formData.duePeriod}
-                      onChange={handleFormChange}
-                      className="form-select"
-                    >
-                      <option value="7">7 days</option>
-                      <option value="14">14 days</option>
-                      <option value="30">30 days</option>
-                    </select>
-                  </div>
-                  <div className="col-md-3">
+                  <div className="col-md-4">
                     <label className="form-label">Due Date</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light">
-                        <Calendar size={16} />
-                      </span>
-                      <input
-                        type="date"
-                        name="dueDate"
-                        value={formData.dueDate}
-                        className="form-control bg-light"
-                        readOnly
-                      />
-                    </div>
+                    <input
+                      type="date"
+                      name="dueDate"
+                      value={formData.dueDate}
+                      onChange={handleFormChange}
+                      className="form-control"
+                    />
                   </div>
-                  <div className="col-md-3">
+                  <div className="col-md-4">
                     <label className="form-label">Bill Number</label>
                     <input
                       type="text"
@@ -580,19 +539,7 @@ function CreateBill() {
                   </div>
                 </div>
 
-                <div className="row mb-4">
-                  <div className="col-md-6">
-                    <label className="form-label">Reference</label>
-                    <input
-                      type="text"
-                      name="reference"
-                      value={formData.reference}
-                      onChange={handleFormChange}
-                      placeholder="Enter reference"
-                      className="form-control"
-                    />
-                  </div>
-                </div>
+
 
                 {/* Items Table */}
                 <div className="table-responsive">
@@ -716,7 +663,7 @@ function CreateBill() {
 
       {/* Footer */}
       <footer className="mt-4 d-flex justify-content-between text-secondary small">
-        <span>BillCreator</span>
+       
         <div className="d-flex align-items-center gap-2">
           <Receipt size={16} />
           <span>Need help with billing?</span>
