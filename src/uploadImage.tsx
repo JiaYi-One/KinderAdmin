@@ -10,7 +10,7 @@ interface FileUploadProps {
 
 function FileUpload({ 
   onFileUpload, 
-  acceptedTypes = ['.png', '.jpg', '.jpeg'], 
+  acceptedTypes = ['.png', '.jpg', '.jpeg', '.gif', '.webp'], 
   maxSize = 5,
   className = "",
   disabled = false
@@ -35,6 +35,12 @@ function FileUpload({
       return;
     }
 
+    // Additional validation for image files
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file.');
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
 
@@ -42,7 +48,7 @@ function FileUpload({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", "KinderCare"); // Set in Cloudinary
-      formData.append("folder", "chat_files"); // Organize uploads in chat_files folder
+      formData.append("folder", "announcement_images"); // Organize uploads in announcement_images folder
 
       // Upload as image since we only accept images
       const response = await fetch(
@@ -59,6 +65,11 @@ function FileUpload({
 
       const data = await response.json();
       
+      // Validate response data
+      if (!data.secure_url) {
+        throw new Error('Invalid response from upload service');
+      }
+      
       // Call the callback with file details
       onFileUpload(
         data.secure_url, 
@@ -70,7 +81,19 @@ function FileUpload({
       setUploadProgress(100);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Image upload failed. Please try again.');
+      
+      // More specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('network')) {
+          alert('Network error. Please check your internet connection and try again.');
+        } else if (error.message.includes('Invalid response')) {
+          alert('Upload service error. Please try again later.');
+        } else {
+          alert(`Image upload failed: ${error.message}`);
+        }
+      } else {
+        alert('Image upload failed. Please try again.');
+      }
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

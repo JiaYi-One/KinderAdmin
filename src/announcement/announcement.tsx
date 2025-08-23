@@ -40,13 +40,16 @@ import {
   Send,
   Add,
   Person,
-  Group
+  Group,
+  Image,
+  Close
 } from "@mui/icons-material"
-import { Announcement, AnnouncementComment, User as UserType, FormData, NewComment } from "./types"
+import { Announcement, AnnouncementComment, User as UserType, FormData, NewComment, FileAttachment } from "./types"
 import { db } from "../firebase"
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, getDoc } from "firebase/firestore"
 import { getAuth, onAuthStateChanged } from "firebase/auth"
 import { sendPushNotification } from "../notifications/pushyClient"
+import FileUpload from "../uploadImage"
 
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -60,6 +63,9 @@ export default function AnnouncementsPage() {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null)
   const [currentUser, setCurrentUser] = useState<UserType | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [attachments, setAttachments] = useState<FileAttachment[]>([])
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
 
   // Form state for creating/editing announcements
   const [formData, setFormData] = useState<FormData>({
@@ -106,6 +112,7 @@ export default function AnnouncementsPage() {
               authorRole: replyData.authorRole,
               parentId: replyData.parentId,
               createdAt: replyData.createdAt,
+              replies: [], // Add empty replies array for replies since they're leaf nodes
             }
           })
           
@@ -133,6 +140,7 @@ export default function AnnouncementsPage() {
           category: data.category,
           likes: data.likes || 0,
           comments: comments,
+          attachments: data.attachments || [], // Include attachments
           isLiked: currentUser ? (data.likedBy?.includes(currentUser.name) || false) : false,
           createdAt: data.createdAt, // Add Firebase timestamp
           updatedAt: data.updatedAt, // Add updated timestamp if exists
@@ -196,6 +204,65 @@ export default function AnnouncementsPage() {
     }
   }, [currentUser, fetchAnnouncements])
 
+  // File handling functions
+  const handleImageUpload = (fileUrl: string, fileName: string, fileSize: number, fileType: string) => {
+    const newAttachment: FileAttachment = {
+      id: Date.now().toString(),
+      fileName,
+      fileUrl,
+      fileSize,
+      fileType,
+      uploadedAt: new Date().toISOString()
+    }
+    setAttachments([...attachments, newAttachment])
+  }
+
+
+
+  const removeAttachment = (attachmentId: string) => {
+    setAttachments(attachments.filter(att => att.id !== attachmentId))
+  }
+
+  const handleOpenCreateDialog = () => {
+    setFormData({ title: "", content: "", category: "" })
+    setAttachments([])
+    setIsCreateDialogOpen(true)
+  }
+
+  const handleCloseCreateDialog = () => {
+    setIsCreateDialogOpen(false)
+    setFormData({ title: "", content: "", category: "" })
+    setAttachments([])
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) {
+      return <Image color="primary" />
+    }
+    return <Image color="primary" />
+  }
+
+  // Image preview functions
+  const handleImagePreview = (imageUrl: string) => {
+    setPreviewImage(imageUrl)
+    setIsPreviewOpen(true)
+  }
+
+  const closeImagePreview = () => {
+    setPreviewImage(null)
+    setIsPreviewOpen(false)
+  }
+
+
+
   // Function to send announcement notifications to all parents
   const sendAnnouncementNotifications = async (
     announcementId: string,
@@ -252,12 +319,41 @@ export default function AnnouncementsPage() {
       return
     }
 
+    // Validate attachments
+    if (attachments.length > 0) {
+      const totalSize = attachments.reduce((sum, att) => sum + att.fileSize, 0);
+      const maxTotalSize = 25 * 1024 * 1024; // 25MB total limit
+      
+      if (totalSize > maxTotalSize) {
+        alert("Total attachment size exceeds 25MB limit. Please remove some images.");
+        return;
+      }
+    }
+
     setIsCreating(true)
     try {
+      console.log("Creating announcement with data:", {
+        title: formData.title,
+        content: formData.content,
+        category: formData.category,
+        attachmentsCount: attachments.length
+      });
+      
       // Create a new document reference with auto-generated ID
       const announcementsRef = collection(db, "announcements")
       const newAnnouncementRef = doc(announcementsRef)
       const announcementId = newAnnouncementRef.id
+      
+      // Convert attachments to the format expected by Firebase
+      // Note: Using ISO string for uploadedAt because serverTimestamp() is not supported inside arrays
+      const firebaseAttachments = attachments.map(att => ({
+        id: att.id,
+        fileName: att.fileName,
+        fileUrl: att.fileUrl,
+        fileSize: att.fileSize,
+        fileType: att.fileType,
+        uploadedAt: new Date().toISOString() // Use ISO string instead of serverTimestamp
+      }))
       
       const announcementData = {
         id: announcementId,
@@ -269,6 +365,7 @@ export default function AnnouncementsPage() {
         category: formData.category,
         likes: 0,
         likedBy: [],
+        attachments: firebaseAttachments,
         createdAt: serverTimestamp(),
       }
 
@@ -286,6 +383,7 @@ export default function AnnouncementsPage() {
         category: formData.category,
         likes: 0,
         comments: [],
+        attachments: attachments,
         isLiked: false,
         createdAt: new Date(), // Add current date for immediate display
       }
@@ -293,7 +391,11 @@ export default function AnnouncementsPage() {
       // Update local state
       setAnnouncements([newAnnouncement, ...announcements])
       setFormData({ title: "", content: "", category: "" })
+      setAttachments([]) // Clear attachments
       setIsCreateDialogOpen(false)
+
+      // Show success message
+      alert(`Announcement "${formData.title}" created successfully!`)
 
       // Send notifications to all parents
       await sendAnnouncementNotifications(
@@ -304,7 +406,23 @@ export default function AnnouncementsPage() {
       )
     } catch (error) {
       console.error("Error creating announcement:", error)
-      alert("Error creating announcement. Please try again.")
+      
+      // More specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          alert("Permission denied. You may not have the right to create announcements.")
+        } else if (error.message.includes('network')) {
+          alert("Network error. Please check your internet connection and try again.")
+        } else if (error.message.includes('quota')) {
+          alert("Storage quota exceeded. Please remove some attachments and try again.")
+        } else if (error.message.includes('unavailable')) {
+          alert("Service temporarily unavailable. Please try again in a few minutes.")
+        } else {
+          alert(`Error creating announcement: ${error.message}`)
+        }
+      } else {
+        alert("Error creating announcement. Please try again.")
+      }
     } finally {
       setIsCreating(false)
     }
@@ -317,8 +435,15 @@ export default function AnnouncementsPage() {
       content: announcement.content,
       category: announcement.category,
     })
+    setAttachments(announcement.attachments || []) // Set current attachments
     setAnchorEl(null)
   }
+
+  const handleCancelEdit = () => {
+          setEditingAnnouncement(null)
+      setFormData({ title: "", content: "", category: "" })
+      setAttachments([])
+    }
 
   const handleUpdateAnnouncement = async () => {
     if (!formData.title || !formData.content || !formData.category || !editingAnnouncement) return
@@ -326,10 +451,22 @@ export default function AnnouncementsPage() {
     try {
       const announcementRef = doc(db, "announcements", editingAnnouncement.id)
       
+      // Convert attachments to the format expected by Firebase
+      // Note: Using ISO string for uploadedAt because serverTimestamp() is not supported inside arrays
+      const firebaseAttachments = attachments.map(att => ({
+        id: att.id,
+        fileName: att.fileName,
+        fileUrl: att.fileUrl,
+        fileSize: att.fileSize,
+        fileType: att.fileType,
+        uploadedAt: new Date().toISOString() // Use ISO string instead of serverTimestamp
+      }))
+      
       await updateDoc(announcementRef, {
         title: formData.title,
         content: formData.content,
         category: formData.category,
+        attachments: firebaseAttachments,
         updatedAt: serverTimestamp(),
       })
 
@@ -341,6 +478,7 @@ export default function AnnouncementsPage() {
                 title: formData.title, 
                 content: formData.content, 
                 category: formData.category,
+                attachments: attachments,
                 updatedAt: new Date() // Add current timestamp for immediate display
               }
             : ann,
@@ -348,6 +486,7 @@ export default function AnnouncementsPage() {
       )
       setEditingAnnouncement(null)
       setFormData({ title: "", content: "", category: "" })
+      setAttachments([]) // Clear attachments
     } catch (error) {
       console.error("Error updating announcement:", error)
       alert("Error updating announcement. Please try again.")
@@ -521,6 +660,7 @@ export default function AnnouncementsPage() {
         authorRole: currentUser.role,
         parentId: parentCommentId,
         createdAt: new Date(), // Add current date for immediate display
+        replies: [], // Add empty replies array for replies since they're leaf nodes
       }
 
       setAnnouncements(
@@ -685,7 +825,7 @@ export default function AnnouncementsPage() {
             <Tooltip title="Create New Announcement">
               <Fab
                 color="primary"
-                onClick={() => setIsCreateDialogOpen(true)}
+                onClick={handleOpenCreateDialog}
                 sx={{ bgcolor: 'primary.main' }}
               >
                 <Add />
@@ -697,7 +837,7 @@ export default function AnnouncementsPage() {
         {/* Create Dialog */}
         <Dialog 
           open={isCreateDialogOpen} 
-          onClose={() => setIsCreateDialogOpen(false)}
+          onClose={handleCloseCreateDialog}
           maxWidth="sm"
           fullWidth
         >
@@ -733,10 +873,79 @@ export default function AnnouncementsPage() {
                 rows={4}
                 fullWidth
               />
+              
+              {/* File Upload Section */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Images (Optional)
+                </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <FileUpload
+                    onFileUpload={handleImageUpload}
+                    acceptedTypes={['.png', '.jpg', '.jpeg', '.gif', '.webp']}
+                    maxSize={5}
+                    className=""
+                  />
+                </Box>
+                
+                {/* Display Attachments */}
+                {attachments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                      Attached Images:
+                    </Typography>
+                    <Stack spacing={1}>
+                      {attachments.map((attachment) => (
+                        <Box
+                          key={attachment.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            p: 1,
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                            borderRadius: 1,
+                            bgcolor: 'grey.50'
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {getFileIcon(attachment.fileType)}
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {attachment.fileName}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {formatFileSize(attachment.fileSize)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleImagePreview(attachment.fileUrl)}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              <Image />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => removeAttachment(attachment.id)}
+                              sx={{ color: 'error.main' }}
+                            >
+                              <Close />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Box>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCloseCreateDialog}>Cancel</Button>
             <Button 
               onClick={handleCreateAnnouncement} 
               variant="contained"
@@ -750,7 +959,7 @@ export default function AnnouncementsPage() {
         {/* Edit Dialog */}
         <Dialog 
           open={!!editingAnnouncement} 
-          onClose={() => setEditingAnnouncement(null)}
+          onClose={handleCancelEdit}
           maxWidth="sm"
           fullWidth
         >
@@ -786,10 +995,79 @@ export default function AnnouncementsPage() {
                 rows={4}
                 fullWidth
               />
+              
+              {/* File Upload Section for Edit */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
+                  Images (Optional)
+                </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <FileUpload
+                    onFileUpload={handleImageUpload}
+                    acceptedTypes={['.png', '.jpg', '.jpeg', '.gif', '.webp']}
+                    maxSize={5}
+                    className=""
+                  />
+                </Box>
+                
+                {/* Display Current and New Attachments */}
+                {attachments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                      Attached Images:
+                    </Typography>
+                    <Stack spacing={1}>
+                      {attachments.map((attachment) => (
+                        <Box
+                          key={attachment.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            p: 1,
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                            borderRadius: 1,
+                            bgcolor: 'grey.50'
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {getFileIcon(attachment.fileType)}
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {attachment.fileName}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                {formatFileSize(attachment.fileSize)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleImagePreview(attachment.fileUrl)}
+                              sx={{ color: 'primary.main' }}
+                            >
+                              <Image />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => removeAttachment(attachment.id)}
+                              sx={{ color: 'error.main' }}
+                            >
+                              <Close />
+                            </IconButton>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Box>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setEditingAnnouncement(null)}>Cancel</Button>
+            <Button onClick={handleCancelEdit}>Cancel</Button>
             <Button onClick={handleUpdateAnnouncement} variant="contained">
               Update Announcement
             </Button>
@@ -858,6 +1136,43 @@ export default function AnnouncementsPage() {
                   {announcement.content}
                 </Typography>
               </Box>
+              
+              {/* Images Section - Display images directly */}
+              {announcement.attachments && announcement.attachments.length > 0 && (
+                <Box sx={{ p: 3, pt: 1, pb: 1 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap',
+                    gap: 2 
+                  }}>
+                    {announcement.attachments.map((attachment) => (
+                      <img
+                        key={attachment.id}
+                        src={attachment.fileUrl}
+                        alt={attachment.fileName}
+                        style={{
+                          width: '200px',
+                          height: '200px',
+                          objectFit: 'cover',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+                        }}
+
+                        onClick={() => handleImagePreview(attachment.fileUrl)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.05)'
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)'
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
               
               {/* Time Section */}
               <Box sx={{ p: 3, pt: 1, pb: 2, display: 'flex', justifyContent: 'flex-end' }}>
@@ -1077,7 +1392,7 @@ export default function AnnouncementsPage() {
                 <Button
                   variant="contained"
                   startIcon={<Add />}
-                  onClick={() => setIsCreateDialogOpen(true)}
+                  onClick={handleOpenCreateDialog}
                 >
                   Create Announcement
                 </Button>
@@ -1103,9 +1418,41 @@ export default function AnnouncementsPage() {
             <Delete sx={{ mr: 1 }} />
             Delete
           </MenuItem>
-                 </Menu>
-         </Paper>
-       </Box>
-     </Box>
-   )
- }
+        </Menu>
+
+        {/* Image Preview Modal */}
+        <Dialog
+          open={isPreviewOpen}
+          onClose={closeImagePreview}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography>Image Preview</Typography>
+              <IconButton onClick={closeImagePreview}>
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            {previewImage && (
+              <Box sx={{ textAlign: 'center' }}>
+                <img
+                  src={previewImage}
+                  alt="Preview"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '70vh',
+                    objectFit: 'contain'
+                  }}
+                />
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
+      </Paper>
+    </Box>
+  </Box>
+  )
+}
