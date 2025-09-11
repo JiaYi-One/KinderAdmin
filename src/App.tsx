@@ -15,6 +15,7 @@ import ManageStudAttendance from "./attendance/manageStudAttendance";
 import StudOnLeave from "./attendance/stud_onleave";
 import CreateReport from "./report/create_report";
 import AnnouncementsPage from "./announcement/announcement";
+import StudentList from "./newReg/studentList";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -63,8 +64,8 @@ function App() {
           element={isAuthenticated ? <CreateBill /> : <Navigate to="/login" replace />} 
         />
         <Route 
-          path="/classes" 
-          element={isAuthenticated ? <div>Classes</div> : <Navigate to="/login" replace />} 
+          path="/newReg/studentList" 
+          element={isAuthenticated ? <StudentList /> : <Navigate to="/login" replace />} 
         />
         <Route 
           path="/chat/*" 

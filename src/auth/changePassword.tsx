@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getAuth } from 'firebase/auth';
-import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc   } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -15,7 +15,6 @@ function ChangePassword({
   onSuccess, 
   onCancel,
   userId,
-  userEmail
 }: ChangePasswordProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

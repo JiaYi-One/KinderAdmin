@@ -254,6 +254,7 @@ function StudReg() {
     email: string;
     student_id?: string[];
     childrenNames?: string[];
+    relationship?: string;
   } | null>(null);
   const [showExistingParentInfo, setShowExistingParentInfo] = useState(false);
   const [icError, setIcError] = useState<string>("");
@@ -329,64 +330,47 @@ function StudReg() {
   };
 
   const checkForExistingParent = async () => {
-    const { parentName, parentPhone, parentEmail } = formData;
-    
-    // Only check if we have at least 2 fields filled
-    const filledFields = [parentName, parentPhone, parentEmail].filter(field => field.trim() !== '').length;
-    if (filledFields < 2) {
+    const { parentPhone, parentEmail } = formData;
+
+    // Only treat email or phone as unique identifiers
+    const emailTrimmed = parentEmail.trim();
+    const phoneTrimmed = parentPhone.trim();
+
+    if (!emailTrimmed && !phoneTrimmed) {
       setExistingParent(null);
       setShowExistingParentInfo(false);
       return;
     }
 
     try {
-      // Query parents collection for matching parent
       const parentsRef = collection(db, "parents");
-      let parentQuery;
 
-      // Try to find by email first (most unique)
-      if (parentEmail.trim()) {
-        parentQuery = query(parentsRef, where("email", "==", parentEmail.trim()));
-      } else if (parentPhone.trim()) {
-        // Then by phone
-        parentQuery = query(parentsRef, where("phone", "==", parentPhone.trim()));
-      } else if (parentName.trim()) {
-        // Finally by name
-        parentQuery = query(parentsRef, where("name", "==", parentName.trim()));
+      // Prefer email if provided; otherwise use phone
+      const parentQuery = emailTrimmed
+        ? query(parentsRef, where("email", "==", emailTrimmed))
+        : query(parentsRef, where("phone", "==", phoneTrimmed));
+
+      const querySnapshot = await getDocs(parentQuery);
+
+      if (!querySnapshot.empty) {
+        const parentDoc = querySnapshot.docs[0];
+        const parentData = parentDoc.data();
+
+        const childrenNames = await getChildrenNames(parentData.student_id || []);
+
+        setExistingParent({
+          id: parentDoc.id,
+          name: parentData.name,
+          phone: parentData.phone,
+          email: parentData.email,
+          student_id: parentData.student_id,
+          childrenNames: childrenNames,
+          relationship: parentData.relationship,
+        });
+        setShowExistingParentInfo(true);
+        return;
       }
 
-      if (parentQuery) {
-        const querySnapshot = await getDocs(parentQuery);
-        
-        if (!querySnapshot.empty) {
-          const parentDoc = querySnapshot.docs[0];
-          const parentData = parentDoc.data();
-          
-          // Additional check: verify at least 2 fields match
-          const nameMatch = parentData.name === parentName.trim();
-          const phoneMatch = parentData.phone === parentPhone.trim();
-          const emailMatch = parentData.email === parentEmail.trim();
-          
-          const matchCount = [nameMatch, phoneMatch, emailMatch].filter(Boolean).length;
-          
-                               if (matchCount >= 2) {
-            // Fetch children names
-            const childrenNames = await getChildrenNames(parentData.student_id || []);
-            
-            setExistingParent({
-              id: parentDoc.id,
-              name: parentData.name,
-              phone: parentData.phone,
-              email: parentData.email,
-              student_id: parentData.student_id,
-              childrenNames: childrenNames
-            });
-            setShowExistingParentInfo(true);
-            return;
-          }
-        }
-      }
-      
       setExistingParent(null);
       setShowExistingParentInfo(false);
     } catch (error) {
@@ -403,6 +387,26 @@ function StudReg() {
         parentPhone: existingParent.phone,
         parentEmail: existingParent.email,
       }));
+
+      // Prefill relationship from one of the existing parent's students, if available
+      const firstChildId = existingParent.student_id && existingParent.student_id.length > 0
+        ? existingParent.student_id[0]
+        : undefined;
+      if (firstChildId) {
+        (async () => {
+          try {
+            const childDoc = await getDoc(doc(db, "students", firstChildId));
+            const childData = childDoc.exists() ? childDoc.data() : undefined;
+            const existingRelationship = childData?.relationship as string | undefined;
+            if (existingRelationship) {
+              setFormData(prev => ({ ...prev, relationship: existingRelationship }));
+            }
+          } catch (err) {
+            console.error("Failed to get existing relationship:", err);
+          }
+        })();
+      }
+
       setShowExistingParentInfo(false);
     }
   };
@@ -425,6 +429,12 @@ function StudReg() {
     setIsSubmitting(true);
 
     try {
+      // Derive gender from IC last digit (even=female, odd=male)
+      const cleanIC = (formData.icNumber || "").replace(/-/g, "");
+      const lastDigitChar = cleanIC.charAt(cleanIC.length - 1);
+      const lastDigit = lastDigitChar ? parseInt(lastDigitChar, 10) : NaN;
+      const computedGender = !isNaN(lastDigit) && lastDigit % 2 === 0 ? "Female" : "Male";
+
       let parentId = formData.parentId;
       let isNewParent = false;
 
@@ -457,7 +467,7 @@ function StudReg() {
         relationship: formData.relationship,
         icNumber: formData.icNumber,
         age: formData.age,
-        gender: formData.gender,
+        gender: computedGender,
         class_id: formData.classId,
         address: formData.address,
       });
@@ -477,7 +487,7 @@ function StudReg() {
         relationship: formData.relationship,
         icNumber: formData.icNumber,
         age: formData.age,
-        gender: formData.gender,
+        gender: computedGender,
         address: formData.address,
       });
 
@@ -713,6 +723,7 @@ function StudReg() {
                         onChange={handleChange}
                         className="form-select"
                         required
+                        disabled={!!(existingParent && formData.parentId === existingParent.id)}
                         id="relationship"
                       >
                         <option value="">Select Relationship</option>
@@ -723,7 +734,7 @@ function StudReg() {
                         <option value="Other">Other</option>
                       </select>
                     </div>
-                    {formData.relationship === "Other" && (
+                    {formData.relationship === "Other" && !(existingParent && formData.parentId === existingParent.id) && (
                       <div className="col-md-6">
                         <input
                           type="text"
@@ -739,6 +750,7 @@ function StudReg() {
                         />
                       </div>
                     )}
+                    
                   </div>
                 </div>
               </div>

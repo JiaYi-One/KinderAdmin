@@ -93,7 +93,7 @@ const NavigationBar: FC = () => {
         <NavLink to="/bill/createBill" currentPath={location.pathname}>
           Bills
         </NavLink>
-        <NavLink to="/classes" currentPath={location.pathname}>
+        <NavLink to="/newReg/studentList" currentPath={location.pathname}>
           Classes
         </NavLink>
         <NavLink to="/parent/parentList" currentPath={location.pathname}>
