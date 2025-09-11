@@ -31,7 +31,6 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import dayjs, { Dayjs } from 'dayjs'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import DownloadIcon from '@mui/icons-material/Download';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -644,7 +643,7 @@ export default function ReportsPage() {
     <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
       {/* Back Button - Outside the main wrapper */}
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px" }}>
-        <Button component={Link} to="/" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
+        <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
           Back
         </Button>
       </div>
@@ -663,9 +662,7 @@ export default function ReportsPage() {
               <Typography variant="h4" fontWeight="bold">Attendance Reports</Typography>
               <Typography color="text.secondary">View detailed attendance analytics for all classes</Typography>
             </div>
-            <Button variant="contained" color="primary" startIcon={<DownloadIcon />}>
-              Export Report
-            </Button>
+            
           </div>
 
           {/* Tabs */}

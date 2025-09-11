@@ -650,7 +650,7 @@ function CreateBill() {
                     ) : (
                       <>
                         <Save className="w-4 h-4 me-2" size={16} />
-                        Save Bill
+                        Create Bill
                       </>
                     )}
                   </button>
