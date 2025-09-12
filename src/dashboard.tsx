@@ -11,8 +11,8 @@ function Dashboard() {
       tiles: [
         { title: "Registration", description: "Register new student ", to: "/newReg/studReg" },
         { title: "Classes", description: "Student list by class", to: "/newReg/studentList" },
-        { title: "Teachers", description: "View/manage teachers", to: "/teachers/teachersList" },
-        { title: "Parent List", description: "View/manage parent ", to: "/parent/parentList" },
+        { title: "Staffs", description: "View/manage teachers", to: "/teachers/teachersList" },
+        { title: "Parents ", description: "View/manage parent ", to: "/parent/parentList" },
         { title: "Attendance", description: "Take and review attendance", to: "/attendance/AttendanceMain" },
       ],
     },
