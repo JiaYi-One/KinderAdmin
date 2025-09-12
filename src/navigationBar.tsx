@@ -47,6 +47,7 @@ const DropdownMenu: FC<DropdownMenuProps> = ({ title, items, currentPath }) => {
         type="button"
         data-bs-toggle="dropdown"
         aria-expanded="false"
+        style={{ color: hasActiveItem ? '#ffffff' : '#e9ecef' }}
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
       >
@@ -90,8 +91,8 @@ const NavigationBar: FC = () => {
   }
 
   return (
-    <header className="d-flex justify-content-between align-items-center p-3 bg-light">
-      <h1 className="fw-bold">KinderCare</h1>
+    <header className="d-flex justify-content-between align-items-center p-3" style={{ backgroundColor: '#f5f5f5      ' }}>
+      <h1 className="fw-bold ">KinderCare</h1>
       <nav className="d-flex align-items-center">
         <NavLink to="/dashboard" currentPath={location.pathname}>
           Dashboard

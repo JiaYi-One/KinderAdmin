@@ -1,17 +1,42 @@
 /* NavigationBar.module.css */
 .active {
-    font-weight: bold;
-    color: black;
-  }
-  
-  .inactive {
-    color: black; /* Default black color for inactive links */
-  }
-  
-  .me3 {
-    margin-right: 1rem;
-  }
-  
-  .textDecorationNone {
-    text-decoration: none;
-  }
+  font-weight: bold;
+  color: #495057 !important;
+}
+
+.inactive {
+  color: #495057 !important;
+  /* Light grey color for inactive links */
+}
+
+.me3 {
+  margin-right: 1rem;
+}
+
+.textDecorationNone {
+  text-decoration: none;
+}
+
+.textDecorationNone:hover {
+  color: #495057 !important;
+}
+
+/* Dark theme dropdown styling */
+.dropdown-menu {
+  background-color: #495057 !important;
+  border: 1px solid #6c757d !important;
+}
+
+.dropdown-item {
+  color: #e9ecef !important;
+}
+
+.dropdown-item:hover {
+  background-color: #6c757d !important;
+  color: #ffffff !important;
+}
+
+.dropdown-item.active {
+  background-color: #0d6efd !important;
+  color: #ffffff !important;
+}

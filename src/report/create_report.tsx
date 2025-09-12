@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react'
 import { Slot } from "@radix-ui/react-slot"
 import * as LabelPrimitive from "@radix-ui/react-label"
-import { FileText, BookOpen } from 'lucide-react'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -1185,7 +1184,6 @@ function TeacherReportForm() {
         </>
               ) : (
           <div className="alert alert-warning d-flex align-items-center">
-            <BookOpen className="me-2" />
             <h5 className="alert-heading mb-0">Please select a report type</h5>
           </div>
         )}
@@ -1234,7 +1232,6 @@ export default function KindergartenReportSystem() {
                   Create, edit, and manage student reports with specialized forms for different report types
                 </p>
               </div>
-              <FileText className="w-8 h-8 text-primary" />
             </div>
 
             <TeacherReportForm />

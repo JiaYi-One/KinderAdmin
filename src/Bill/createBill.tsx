@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
-  Save,
   Users,
   Search,
   CheckCircle2,
@@ -834,7 +833,7 @@ function CreateBill() {
                       </>
                     ) : (
                       <>
-                        <Save className="w-4 h-4 me-2" size={16} />
+                      
                         Create Bill
                       </>
                     )}

@@ -1,5 +1,4 @@
 import React, { ChangeEvent, useState } from "react";
-import {  UserPlus } from "lucide-react";
 import { db } from "../firebase";
 import { collection, doc, setDoc, getDocs, getDoc, query, where } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
@@ -696,7 +695,6 @@ function StudReg() {
                 Fill in the student's information below
               </p>
             </div>
-            <UserPlus className="w-8 h-8 text-primary" />
           </div>
 
           <form onSubmit={handleSubmit}>
