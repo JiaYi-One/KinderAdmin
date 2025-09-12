@@ -84,11 +84,11 @@ const NavigationBar: FC = () => {
         </span>
       )}
       <nav className="d-flex align-items-center">
-        <NavLink to="/" currentPath={location.pathname}>
+        <NavLink to="/dashboard" currentPath={location.pathname}>
           Dashboard
         </NavLink>
         <NavLink to="/newReg/studReg" currentPath={location.pathname}>
-          Students
+          Registration
         </NavLink>
         <NavLink to="/bill/createBill" currentPath={location.pathname}>
           Bills

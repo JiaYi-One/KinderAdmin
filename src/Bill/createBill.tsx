@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
-  Receipt,
+  
   Save,
   Users,
   Search,
@@ -403,11 +403,11 @@ function CreateBill() {
   }
 
   return (
-    <div className="container-fluid py-4 px-4">
+    <div className="min-vh-100">
       <form onSubmit={handleSubmit}>
         <div className="row">
           {/* Left Column - Student Selection */}
-          <div className="col-md-4">
+          <div className="col-md-4 ">
             <div className="card shadow-sm h-100">
               <div className="card-header bg-white py-3">
                 <h5 className="card-title mb-0 d-flex align-items-center gap-2">
@@ -661,14 +661,7 @@ function CreateBill() {
         </div>
       </form>
 
-      {/* Footer */}
-      <footer className="mt-4 d-flex justify-content-between text-secondary small">
-       
-        <div className="d-flex align-items-center gap-2">
-          <Receipt size={16} />
-          <span>Need help with billing?</span>
-        </div>
-      </footer>
+    
     </div>
   );
 }

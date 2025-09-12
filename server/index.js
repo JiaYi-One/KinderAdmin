@@ -28,7 +28,7 @@ app.get('/health', (_req, res) => {
 app.post('/pushy', async (req, res) => {
     const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId, teacherName, studentName, parentName } = req.body || {};
 
-    console.log('📨 Notification request:', { parentId, message, billCount, totalAmount, type, title, tokens: deviceTokens?.length || 0 });
+    console.log('📨 Notification request:', { parentId, message, billCount, totalAmount, type, title, entityId, tokens: deviceTokens?.length || 0 });
 
     if (!deviceTokens || deviceTokens.length === 0) {
         console.error('❌ No device tokens provided');
@@ -36,12 +36,13 @@ app.post('/pushy', async (req, res) => {
     }
 
     try {
-        // Compute a title (fallbacks by type)
+        // Compute a title (use provided title first, then fallback by type)
         const computedTitle = title || ({
             new_bill: 'New Bill Available',
             announcement: 'New Announcement',
             report: 'New Report',
             chat: 'New Message',
+            reminder: 'Payment Reminder',
         }[type] || 'KinderCare');
 
         // Send notifications
@@ -61,6 +62,7 @@ app.post('/pushy', async (req, res) => {
                                 totalAmount: totalAmount || 0,
                                 message: message || 'You have a new notification',
                                 entityId: entityId || null,
+                                title: computedTitle, // Include title in data payload for mobile handling
                                 // Duplicate chatId for chat payloads to improve compatibility on clients
                                 ...(type === 'chat' && entityId
                                     ? { chatId: entityId }
@@ -72,7 +74,6 @@ app.post('/pushy', async (req, res) => {
                                     parentName: parentName,
                                     content: message,
                                 } : {}),
-                                title: computedTitle,
                             },
                             notification: {
                                 title: computedTitle,

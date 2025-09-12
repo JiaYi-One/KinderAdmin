@@ -1,7 +1,8 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import NavigationBar from "./navigationBar";
 import CreateBill from "./Bill/createBill";
-import StudReg from "./newReg/studReg";
+import BillMain from "./Bill/bill_Main";
+import StudReg from "./student/studReg";
 import { ChatLayout } from "./chat/chat_layout";
 import ParentList from "./parent/parentList";
 import TeachersList from "./teachers/teachersList";
@@ -15,7 +16,9 @@ import ManageStudAttendance from "./attendance/manageStudAttendance";
 import StudOnLeave from "./attendance/stud_onleave";
 import CreateReport from "./report/create_report";
 import AnnouncementsPage from "./announcement/announcement";
-import StudentList from "./newReg/studentList";
+import StudentList from "./student/studentList";
+import Dashboard from "./dashboard";
+import BillList from "./Bill/bill_List";
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -45,6 +48,7 @@ function App() {
     <>
       <NavigationBar />
       <Routes>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route 
           path="/login" 
           element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} 
@@ -52,12 +56,20 @@ function App() {
         
         {/* Protected Routes */}
         <Route 
-          path="/" 
-          element={isAuthenticated ? <div>Dashboard</div> : <Navigate to="/login" replace />} 
+          path="/dashboard" 
+          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" replace />} 
         />
         <Route 
           path="/newReg/studReg" 
           element={isAuthenticated ? <StudReg /> : <Navigate to="/login" replace />} 
+        />
+         <Route 
+          path="/bill/bill_List" 
+          element={isAuthenticated ? <BillList /> : <Navigate to="/login" replace />} 
+        />
+        <Route 
+          path="/bill/bill_Main" 
+          element={isAuthenticated ? <BillMain /> : <Navigate to="/login" replace />} 
         />
         <Route 
           path="/bill/createBill" 
