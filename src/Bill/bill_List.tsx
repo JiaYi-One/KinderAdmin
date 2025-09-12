@@ -368,14 +368,11 @@ function BillList() {
 
           {/* Pagination */}
           {filteredBills.length > 0 && (
-            <div className="d-flex align-items-center justify-content-between mt-3">
-              <div className="text-muted small">
-                Showing {((currentPage - 1) * pageSize) + 1}
-                -{Math.min(currentPage * pageSize, filteredBills.length)} of {filteredBills.length}
-              </div>
+            <div className="d-flex align-items-center justify-content-end mt-3">
+              
               <nav aria-label="Bill pagination">
-                <ul className="pagination mb-0">
-                  <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
+              <ul className="pagination mb-0 justify-content-end">
+              <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
                     <button className="page-link" onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>Prev</button>
                   </li>
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (

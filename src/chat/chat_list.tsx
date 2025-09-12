@@ -145,7 +145,7 @@ export function ChatList() {
         </div>
       </div>
 
-      <div className="flex-grow-1 overflow-auto position-relative" style={{ marginRight: '1px',marginLeft: '1px',borderRadius: '10px' }}>
+      <div className="flex-grow-1 overflow-auto position-relative" style={{ marginRight: '10px',marginLeft: '10px',borderRadius: '10px' }}>
         {showNewChat ? (
           <div className="p-3">
             <NewChatSelector
@@ -173,6 +173,16 @@ export function ChatList() {
                     cursor: 'pointer',
                     borderLeft: isActive ? '4px solid #0d6efd' : '4px solid transparent',
                     transition: 'all 0.2s ease-in-out'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = '#f8f9fa';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = '';
+                    }
                   }}
                 >
                   <div className="d-flex justify-content-between align-items-baseline">

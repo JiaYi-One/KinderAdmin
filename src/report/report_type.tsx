@@ -212,9 +212,9 @@ const AssessmentTable: React.FC<AssessmentTableProps> = ({
         <thead>
           <tr>
             <th className="col-6">Skill Area</th>
-            <th className="text-center">✔️ Excellent</th>
-            <th className="text-center">👍 Satisfactory</th>
-            <th className="text-center">❗ Needs Support</th>
+            <th className="text-center">Excellent</th>
+            <th className="text-center">Satisfactory</th>
+            <th className="text-center">Needs Support</th>
           </tr>
         </thead>
         <tbody>
@@ -537,7 +537,7 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         {/* Language & Communication Skills */}
         <Card className="mb-4" data-section="academic-language">
           <CardHeader>
-            <CardTitle>🧠 LANGUAGE & COMMUNICATION SKILLS <span className="text-danger">*</span></CardTitle>
+            <CardTitle>LANGUAGE & COMMUNICATION SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -560,7 +560,7 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         {/* Mathematical Thinking */}
         <Card className="mb-4" data-section="academic-math">
           <CardHeader>
-            <CardTitle>🔢 MATHEMATICAL THINKING <span className="text-danger">*</span></CardTitle>
+            <CardTitle>MATHEMATICAL THINKING <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -583,7 +583,7 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         {/* Cognitive Skills */}
         <Card className="mb-4" data-section="academic-cognitive">
           <CardHeader>
-            <CardTitle>🧩 COGNITIVE SKILLS <span className="text-danger">*</span></CardTitle>
+            <CardTitle>COGNITIVE SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -598,7 +598,7 @@ export const AcademicDevelopmentForm: React.FC<ReportTypeProps> = ({
         {/* Learning Habits */}
         <Card className="mb-4" data-section="academic-learning">
           <CardHeader>
-            <CardTitle>📚 LEARNING HABITS <span className="text-danger">*</span></CardTitle>
+            <CardTitle>LEARNING HABITS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -634,7 +634,7 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         {/* Social Skills */}
         <Card className="mb-4" data-section="social-skills">
           <CardHeader>
-            <CardTitle>👫 SOCIAL SKILLS <span className="text-danger">*</span></CardTitle>
+            <CardTitle>SOCIAL SKILLS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -657,7 +657,7 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         {/* Emotional Development */}
         <Card className="mb-4" data-section="social-emotional">
           <CardHeader>
-            <CardTitle>💭 EMOTIONAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
+            <CardTitle>EMOTIONAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -680,7 +680,7 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         {/* Behavior & Classroom Conduct */}
         <Card className="mb-4" data-section="social-behavior">
           <CardHeader>
-            <CardTitle>📏 BEHAVIOR & CLASSROOM CONDUCT <span className="text-danger">*</span></CardTitle>
+            <CardTitle>BEHAVIOR & CLASSROOM CONDUCT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection
@@ -703,7 +703,7 @@ export const SocialEmotionalForm: React.FC<ReportTypeProps> = ({
         {/* Relationship with Adults */}
         <Card className="mb-4" data-section="social-adults">
           <CardHeader>
-            <CardTitle>🤝 RELATIONSHIP WITH ADULTS <span className="text-danger">*</span></CardTitle>
+            <CardTitle>RELATIONSHIP WITH ADULTS <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentTable
@@ -739,7 +739,7 @@ export const PhysicalCreativeForm: React.FC<ReportTypeProps> = ({
         {/* Physical Development */}
         <Card className="mb-4" data-section="physical-development">
           <CardHeader>
-            <CardTitle>🏃 PHYSICAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
+            <CardTitle>PHYSICAL DEVELOPMENT <span className="text-danger">*</span></CardTitle>
           </CardHeader>
           <CardContent>
             <AssessmentSection

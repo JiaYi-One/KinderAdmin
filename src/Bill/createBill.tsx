@@ -2,11 +2,12 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
-  
   Save,
   Users,
   Search,
   CheckCircle2,
+
+  X,
 } from "lucide-react";
 import { db } from "../firebase";
 import {
@@ -42,6 +43,7 @@ interface Bill {
   totalAmount: number;
   billDate: string;
   dueDate: string;
+  dueDateTerm: string;
   billNumber: string;
   parentEmail?: string;
 }
@@ -54,8 +56,14 @@ interface BillItem {
 
 interface FormData {
   billDate: string;
-  dueDate: string;
+  dueDateTerm: string;
   billNumber: string;
+}
+
+interface DescriptionTemplate {
+  id: string;
+  description: string;
+  createdAt: Date;
 }
 
 function CreateBill() {
@@ -72,11 +80,89 @@ function CreateBill() {
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
-    dueDate: new Date().toISOString().split("T")[0],
+    dueDateTerm: "7",
     billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [descriptionTemplates, setDescriptionTemplates] = useState<DescriptionTemplate[]>([]);
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [newDescription, setNewDescription] = useState("");
+  const [customInputs, setCustomInputs] = useState<{ [key: number]: string }>({});
+  const [showTemplateSaved, setShowTemplateSaved] = useState(false);
 
+  // Calculate due date based on term
+  const calculateDueDate = (billDate: string, term: string): string => {
+    const billDateObj = new Date(billDate);
+    const days = parseInt(term);
+    const dueDateObj = new Date(billDateObj.getTime() + (days * 24 * 60 * 60 * 1000));
+    return dueDateObj.toISOString().split("T")[0];
+  };
+
+  // Format date to dd/mm/yyyy
+  const formatDateToDDMMYYYY = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Load description templates from localStorage
+  const loadDescriptionTemplates = () => {
+    try {
+      const saved = localStorage.getItem('billDescriptionTemplates');
+      if (saved) {
+        const templates = JSON.parse(saved).map((t: { id: string; description: string; createdAt: string }) => ({
+          ...t,
+          createdAt: new Date(t.createdAt)
+        }));
+        setDescriptionTemplates(templates);
+      } else {
+        // Initialize with default templates
+        const defaultTemplates = [
+          { id: '1', description: 'Tuition Fee', createdAt: new Date() },
+          { id: '2', description: 'Registration Fee', createdAt: new Date() },
+          { id: '3', description: 'Transportation Fee', createdAt: new Date() },
+          { id: '4', description: 'Meal Fee', createdAt: new Date() },
+          { id: '5', description: 'Activity Fee', createdAt: new Date() },
+        ];
+        setDescriptionTemplates(defaultTemplates);
+        localStorage.setItem('billDescriptionTemplates', JSON.stringify(defaultTemplates));
+      }
+    } catch (error) {
+      console.error('Error loading description templates:', error);
+    }
+  };
+
+  // Save description templates to localStorage
+  const saveDescriptionTemplates = (templates: DescriptionTemplate[]) => {
+    try {
+      localStorage.setItem('billDescriptionTemplates', JSON.stringify(templates));
+      setDescriptionTemplates(templates);
+    } catch (error) {
+      console.error('Error saving description templates:', error);
+    }
+  };
+
+  // Add new description template
+  const addDescriptionTemplate = () => {
+    if (newDescription.trim()) {
+      const newTemplate: DescriptionTemplate = {
+        id: Date.now().toString(),
+        description: newDescription.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...descriptionTemplates, newTemplate];
+      saveDescriptionTemplates(updatedTemplates);
+      setNewDescription("");
+    }
+  };
+
+  // Delete description template
+  const deleteDescriptionTemplate = (id: string) => {
+    const updatedTemplates = descriptionTemplates.filter(t => t.id !== id);
+    saveDescriptionTemplates(updatedTemplates);
+  };
 
 
   useEffect(() => {
@@ -124,6 +210,7 @@ function CreateBill() {
     };
 
     fetchData();
+    loadDescriptionTemplates();
   }, []);
 
   const handleClassSelection = async (
@@ -223,16 +310,56 @@ function CreateBill() {
     field: keyof BillItem,
     value: string
   ) => {
+    if (field === "description" && value === "__custom__") {
+      // Show custom input for this item
+      setCustomInputs(prev => ({ ...prev, [id]: "" }));
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id
+            ? { ...item, description: "" }
+            : item
+        )
+      );
+    } else {
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                [field]: field === "amount" ? parseFloat(value) || 0 : value,
+              }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleCustomInputChange = (id: number, value: string) => {
+    setCustomInputs(prev => ({ ...prev, [id]: value }));
     setItems((prevItems) =>
       prevItems.map((item) =>
         item.id === id
-          ? {
-              ...item,
-              [field]: field === "amount" ? parseFloat(value) || 0 : value,
-            }
+          ? { ...item, description: value }
           : item
       )
     );
+  };
+
+  const handleCustomInputBlur = (value: string) => {
+    // When user finishes typing a custom description, save it as a template
+    if (value.trim() && !descriptionTemplates.some(t => t.description.toLowerCase() === value.toLowerCase())) {
+      const newTemplate: DescriptionTemplate = {
+        id: Date.now().toString(),
+        description: value.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...descriptionTemplates, newTemplate];
+      saveDescriptionTemplates(updatedTemplates);
+      
+      // Show brief notification
+      setShowTemplateSaved(true);
+      setTimeout(() => setShowTemplateSaved(false), 2000);
+    }
   };
 
   const handleFormChange = (
@@ -271,11 +398,13 @@ function CreateBill() {
         if (!student) continue;
   
         const billDocRef = doc(collection(db, "bills"));
+        const calculatedDueDate = calculateDueDate(formData.billDate, formData.dueDateTerm);
         const billData = {
           billId: billDocRef.id,
           billNumber: formData.billNumber,
           billDate: formData.billDate,
-          dueDate: formData.dueDate,
+          dueDate: calculatedDueDate,
+          dueDateTerm: formData.dueDateTerm,
           items: items,
           totalAmount: total,
           paymentStatus: "unpaid",
@@ -312,6 +441,7 @@ function CreateBill() {
               billDate: b.billDate,
               billNumber: b.billNumber,
               dueDate: b.dueDate,
+              dueDateTerm: b.dueDateTerm,
               studentName: b.studentName,
             })),
           };
@@ -357,7 +487,7 @@ function CreateBill() {
   
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
-        dueDate: new Date().toISOString().split("T")[0],
+        dueDateTerm: "7",
         billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
       });
       setSelectedStudentIds([]);
@@ -502,12 +632,19 @@ function CreateBill() {
             <div className="card shadow-sm">
               <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 className="card-title mb-0">Payment Details</h5>
-                <div className="badge bg-primary">Draft</div>
+                 <button
+                   type="button"
+                   className="btn btn-warning btn-sm d-flex align-items-center gap-2"
+                   onClick={() => setShowDescriptionModal(true)}
+                   title="Manage Description Templates"
+                 >
+                   <span>Description Templates</span>
+                 </button>
               </div>
               <div className="card-body">
                 {/* Bill Info */}
                 <div className="row mb-4">
-                  <div className="col-md-4">
+                  <div className="col-md-3">
                     <label className="form-label">Bill Date</label>
                     <input
                       type="date"
@@ -517,17 +654,31 @@ function CreateBill() {
                       className="form-control"
                     />
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-3">
+                    <label className="form-label">Payment Term</label>
+                    <select
+                      name="dueDateTerm"
+                      value={formData.dueDateTerm}
+                      onChange={handleFormChange}
+                      className="form-select"
+                    >
+                      <option value="3">3 Days</option>
+                      <option value="7">7 Days</option>
+                      <option value="14">14 Days</option>
+                      <option value="30">30 Days</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
                     <label className="form-label">Due Date</label>
                     <input
-                      type="date"
-                      name="dueDate"
-                      value={formData.dueDate}
-                      onChange={handleFormChange}
-                      className="form-control"
+                      type="text"
+                      value={formatDateToDDMMYYYY(calculateDueDate(formData.billDate, formData.dueDateTerm))}
+                      className="form-control bg-light"
+                      readOnly
+                      disabled
                     />
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-3">
                     <label className="form-label">Bill Number</label>
                     <input
                       type="text"
@@ -558,21 +709,55 @@ function CreateBill() {
                       {items.map((item, index) => (
                         <tr key={item.id}>
                           <td className="text-center">{index + 1}</td>
-                          <td>
-                            <input
-                              type="text"
-                              value={item.description}
-                              className="form-control"
-                              onChange={(e) =>
-                                handleInputChange(
-                                  item.id,
-                                  "description",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Enter description"
-                            />
-                          </td>
+                           <td>
+                             {customInputs[item.id] !== undefined ? (
+                               <div className="d-flex gap-2">
+                                 <input
+                                   type="text"
+                                   className="form-control"
+                                   value={item.description}
+                                   onChange={(e) => handleCustomInputChange(item.id, e.target.value)}
+                                   onBlur={(e) => handleCustomInputBlur(e.target.value)}
+                                   placeholder="Other"
+                                   autoFocus
+                                 />
+                                 <button
+                                   type="button"
+                                   className="btn btn-outline-secondary btn-sm"
+                                   onClick={() => {
+                                     setCustomInputs(prev => {
+                                       const newInputs = { ...prev };
+                                       delete newInputs[item.id];
+                                       return newInputs;
+                                     });
+                                   }}
+                                   title="Back to dropdown"
+                                 >
+                                   <X size={14} />
+                                 </button>
+                               </div>
+                             ) : (
+                               <select
+                                 className="form-select"
+                                 value={item.description}
+                                 onChange={(e) =>
+                                   handleInputChange(
+                                     item.id,
+                                     "description",
+                                     e.target.value
+                                   )
+                                 }
+                               >
+                                 <option value="">Select description</option>
+                                 {descriptionTemplates.map((template) => (
+                                   <option key={template.id} value={template.description}>
+                                     {template.description}
+                                   </option>
+                                 ))}
+                                 <option value="__custom__">Other</option>
+                               </select>
+                             )}
+                           </td>
                           <td>
                             <input
                               type="number"
@@ -658,9 +843,109 @@ function CreateBill() {
               </div>
             </div>
           </div>
-        </div>
-      </form>
+         </div>
+       </form>
 
+       {/* Template Saved Notification */}
+       {showTemplateSaved && (
+         <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
+           <div className="toast show" role="alert">
+             
+             <div className="toast-body">
+               New description  has been added to your template.
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Description Template Modal */}
+       {showDescriptionModal && (
+         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+           <div className="modal-dialog modal-lg">
+             <div className="modal-content">
+               <div className="modal-header">
+                 <h5 className="modal-title">Manage Description Templates</h5>
+                 <button
+                   type="button"
+                   className="btn-close"
+                   onClick={() => {
+                     setShowDescriptionModal(false);
+                     setNewDescription("");
+                   }}
+                 ></button>
+               </div>
+               <div className="modal-body">
+                 {/* Add New Template */}
+                 <div className="mb-4">
+                   <label className="form-label">Add New Template</label>
+                   <div className="d-flex gap-2">
+                     <input
+                       type="text"
+                       className="form-control"
+                       value={newDescription}
+                       onChange={(e) => setNewDescription(e.target.value)}
+                       placeholder="Enter description"
+                       onKeyPress={(e) => {
+                         if (e.key === 'Enter') {
+                           addDescriptionTemplate();
+                         }
+                       }}
+                     />
+                     <button
+                       type="button"
+                       className="btn btn-primary"
+                       onClick={addDescriptionTemplate}
+                       disabled={!newDescription.trim()}
+                     >
+                       <Plus size={16} />
+                     </button>
+                   </div>
+                 </div>
+
+                 {/* Existing Templates */}
+                 <div>
+                   <label className="form-label">Existing Templates</label>
+                   <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                     {descriptionTemplates.length === 0 ? (
+                       <div className="text-muted text-center py-3">
+                         No templates available. Add your first template above.
+                       </div>
+                     ) : (
+                       descriptionTemplates.map((template) => (
+                         <div
+                           key={template.id}
+                           className="list-group-item d-flex justify-content-between align-items-center"
+                         >
+                           <span>{template.description}</span>
+                           <button
+                             className="btn btn-sm btn-outline-danger"
+                             onClick={() => deleteDescriptionTemplate(template.id)}
+                             title="Delete template"
+                           >
+                             <X size={14} />
+                           </button>
+                         </div>
+                       ))
+                     )}
+                   </div>
+                 </div>
+               </div>
+               <div className="modal-footer">
+                 <button
+                   type="button"
+                   className="btn btn-secondary"
+                   onClick={() => {
+                     setShowDescriptionModal(false);
+                     setNewDescription("");
+                   }}
+                 >
+                   Close
+                 </button>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
     
     </div>
   );

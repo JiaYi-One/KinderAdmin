@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react"
 import {
   Typography, Button, Select, MenuItem,
-  FormControl, InputLabel, Avatar
+  FormControl, InputLabel, Avatar,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, FormControlLabel, Checkbox,
+  Tooltip
 } from "@mui/material"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
-import SaveIcon from "@mui/icons-material/Save"
 import GroupIcon from "@mui/icons-material/Group"
 import { Link } from "react-router-dom"
 import { db } from "../firebase"
@@ -33,9 +35,11 @@ interface StudentData {
   photo?: string;
 }
 
+
 export default function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState("")
   const [attendance, setAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({})
+  const [attendanceReasons, setAttendanceReasons] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [classes, setClasses] = useState<ClassData[]>([])
   const [students, setStudents] = useState<StudentData[]>([])
@@ -50,6 +54,10 @@ export default function AttendancePage() {
   const [isWeekend, setIsWeekend] = useState(false);
   const [attendanceExists, setAttendanceExists] = useState(false);
   const [originalAttendance, setOriginalAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({});
+  const [absentDialogOpen, setAbsentDialogOpen] = useState(false);
+  const [selectedStudentForAbsent, setSelectedStudentForAbsent] = useState<string | null>(null);
+  const [absentReason, setAbsentReason] = useState("");
+  const [hasAbsentReason, setHasAbsentReason] = useState(false);
 
   // Fetch classes from database
   useEffect(() => {
@@ -149,26 +157,37 @@ export default function AttendancePage() {
           if (dayData) {
             // Attendance exists, pre-fill
             const att: Record<string, "present" | "absent" | "on leave"> = {};
+            const reasons: Record<string, string> = {};
             Object.entries(dayData).forEach(([studentId, studentData]) => {
-              const data = studentData as { status: string; name: string; note?: string };
+              const data = studentData as { status: string; name: string; note?: string; absenceType?: string; reason?: string };
               att[studentId] = data.status as "present" | "absent" | "on leave";
+              
+              if (data.absenceType) {
+                reasons[studentId] = data.absenceType;
+              } else if (data.note) {
+                reasons[studentId] = data.note;
+              }
             });
             setAttendance(att);
+            setAttendanceReasons(reasons);
             setOriginalAttendance(att);
             setAttendanceExists(true);
           } else {
             setAttendance({});
+            setAttendanceReasons({});
             setOriginalAttendance({});
             setAttendanceExists(false);
           }
         } else {
           setAttendance({});
+          setAttendanceReasons({});
           setOriginalAttendance({});
           setAttendanceExists(false);
         }
       } catch (error) {
         console.error("Error fetching existing attendance:", error);
         setAttendance({});
+        setAttendanceReasons({});
         setOriginalAttendance({});
         setAttendanceExists(false);
       }
@@ -177,10 +196,58 @@ export default function AttendancePage() {
   }, [selectedClass, selectedDate]);
 
   const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "on leave") => {
-    setAttendance((prev) => ({
-      ...prev,
-      [studentId]: status,
-    }))
+    if (status === "absent") {
+      setSelectedStudentForAbsent(studentId);
+      setAbsentReason("");
+      setHasAbsentReason(false);
+      setAbsentDialogOpen(true);
+    } else {
+      setAttendance((prev) => ({
+        ...prev,
+        [studentId]: status,
+      }));
+      // Clear reason if changing from absent to other status
+      if (attendanceReasons[studentId]) {
+        setAttendanceReasons((prev) => {
+          const newReasons = { ...prev };
+          delete newReasons[studentId];
+          return newReasons;
+        });
+      }
+    }
+  }
+
+  const handleAbsentDialogConfirm = () => {
+    if (selectedStudentForAbsent) {
+      setAttendance((prev) => ({
+        ...prev,
+        [selectedStudentForAbsent]: "absent",
+      }));
+      
+      if (hasAbsentReason && absentReason.trim()) {
+        setAttendanceReasons((prev) => ({
+          ...prev,
+          [selectedStudentForAbsent]: absentReason.trim(),
+        }));
+      } else {
+        setAttendanceReasons((prev) => ({
+          ...prev,
+          [selectedStudentForAbsent]: "No reason provided",
+        }));
+      }
+    }
+    
+    setAbsentDialogOpen(false);
+    setSelectedStudentForAbsent(null);
+    setAbsentReason("");
+    setHasAbsentReason(false);
+  }
+
+  const handleAbsentDialogCancel = () => {
+    setAbsentDialogOpen(false);
+    setSelectedStudentForAbsent(null);
+    setAbsentReason("");
+    setHasAbsentReason(false);
   }
 
   const handleSaveAttendance = async () => {
@@ -195,10 +262,11 @@ export default function AttendancePage() {
       Object.entries(attendance).forEach(([studentId, status]) => {
         const student = students.find(s => s.id === studentId);
         if (student) {
+          const reason = attendanceReasons[studentId] || '';
           attendanceForDay[studentId] = {
             status,
             name: student.name,
-            note: '', // Add note field, default to empty string
+            note: reason,
             timestamp: selectedDate.toISOString()
           };
         }
@@ -285,9 +353,7 @@ export default function AttendancePage() {
               <Typography variant="h6" fontWeight="bold" color="primary">
                 {selectedDate.format('dddd, MMMM D, YYYY')}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {isWeekend ? "Weekend - No School" : "School Day"}
-              </Typography>
+             
             </div>
           </div>
         {/* Date Picker */}
@@ -467,6 +533,14 @@ export default function AttendancePage() {
                           <Typography variant="body2" color="text.secondary">
                             Student ID: {student.studentID}
                           </Typography>
+                          {attendanceReasons[student.id] && (
+                            <Typography variant="body2" color="text.secondary" style={{ fontStyle: 'italic', marginTop: '4px' }}>
+                              {attendance[student.id] === "on leave" 
+                                ? `On Leave (Reason: ${attendanceReasons[student.id]})`
+                                : `Reason: ${attendanceReasons[student.id]}`
+                              }
+                            </Typography>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: "8px" }}>
@@ -478,14 +552,7 @@ export default function AttendancePage() {
                         >
                           Present
                         </Button>
-                        <Button
-                          variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
-                          color="warning"
-                          size="small"
-                          onClick={() => handleAttendanceChange(student.id, "on leave")}
-                        >
-                          On Leave
-                        </Button>
+                       
                         <Button
                           variant={attendance[student.id] === "absent" ? "contained" : "outlined"}
                           color="error"
@@ -493,7 +560,20 @@ export default function AttendancePage() {
                           onClick={() => handleAttendanceChange(student.id, "absent")}
                         >
                           Absent
-                        </Button>
+                        </Button> {/* On Leave button is disabled for teachers - leave status comes from parent applications */}
+                        <Tooltip title="Leave status is automatically set from parent applications">
+                          <span>
+                            <Button
+                              variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
+                              color="warning"
+                              size="small"
+                              disabled={true}
+                              style={{ opacity: attendance[student.id] === "on leave" ? 1 : 0.5 }}
+                            >
+                              On Leave
+                            </Button>
+                          </span>
+                        </Tooltip>
                       </div>
                     </div>
                   ))}
@@ -510,7 +590,6 @@ export default function AttendancePage() {
                     (attendanceExists && !isAttendanceModified()) ||
                     isWeekend
                   }
-                  startIcon={<SaveIcon />}
                   variant="contained"
                   color="primary"
                 >
@@ -526,6 +605,48 @@ export default function AttendancePage() {
         )}
         </div>
       </div>
+
+      {/* Absent Reason Dialog */}
+      <Dialog open={absentDialogOpen} onClose={handleAbsentDialogCancel} maxWidth="sm" fullWidth>
+        <DialogTitle>Mark Student as Absent</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" style={{ marginBottom: '16px' }}>
+            Is there a specific reason for the student's absence?
+          </Typography>
+          
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={hasAbsentReason}
+                onChange={(e) => setHasAbsentReason(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="Yes, provide a reason"
+          />
+          
+          {hasAbsentReason && (
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Reason for absence"
+              value={absentReason}
+              onChange={(e) => setAbsentReason(e.target.value)}
+              placeholder="Please provide the reason for absence..."
+              style={{ marginTop: '16px' }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleAbsentDialogCancel} color="secondary">
+            Cancel
+          </Button>
+          <Button onClick={handleAbsentDialogConfirm} color="primary" variant="contained">
+            Mark Absent
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }

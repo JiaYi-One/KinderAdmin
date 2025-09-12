@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { Slot } from "@radix-ui/react-slot"
 import * as LabelPrimitive from "@radix-ui/react-label"
-import { FileText, BookOpen, Save } from 'lucide-react'
+import { FileText, BookOpen } from 'lucide-react'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { collection, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -1197,7 +1197,7 @@ function TeacherReportForm() {
             Cancel
           </button>
           <Button type="submit" className="d-flex align-items-center">
-            <Save className="me-2" />
+          
             Save Report
           </Button>
         </div>
@@ -1240,12 +1240,6 @@ export default function KindergartenReportSystem() {
             <TeacherReportForm />
           </main>
 
-          <footer className="mt-4 d-flex justify-content-between align-items-center text-sm text-muted">
-            <div className="d-flex align-items-center gap-2">
-              <BookOpen className="w-4 h-4" />
-              <span>Need help with reports?</span>
-            </div>
-          </footer>
         </div>
       </div>
     </>

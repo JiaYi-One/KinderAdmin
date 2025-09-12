@@ -1,5 +1,5 @@
 import React, { ChangeEvent, useState } from "react";
-import { Save, UserPlus, Receipt } from "lucide-react";
+import {  UserPlus } from "lucide-react";
 import { db } from "../firebase";
 import { collection, doc, setDoc, getDocs, getDoc, query, where } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
@@ -737,7 +737,7 @@ function StudReg() {
                     required
                     id="icNumber"
                   />
-                  <div className="form-text">Enter 14-digit IC number with hyphens (e.g., 150101-01-1234)</div>
+                  
                   {icError && (
                     <div className="form-text text-danger">{icError}</div>
                   )}
@@ -751,12 +751,11 @@ function StudReg() {
                     <input
                       type="text"
                       name="classId"
-                      value={formData.classId || "Auto-selected based on age"}
+                      value={formData.classId}
                       className="form-control bg-light"
                       readOnly
                       id="classId"
                     />
-                    <div className="form-text">Automatically selected based on age</div>
                   </div>
                 </div>
                 <div className="col-md-12">
@@ -876,11 +875,7 @@ function StudReg() {
                   </div>
                 </div>
               </div>
-              <div className="mt-2">
-                <small className="text-muted">
-                  We'll check for existing parents by email or phone number. If a match is found, we'll show you the existing details for verification. You can modify the input if needed.
-                </small>
-              </div>
+              
             </div>
 
             {/* Existing Parent Alert */}
@@ -940,20 +935,14 @@ function StudReg() {
                 className="btn btn-primary"
                 disabled={isSubmitting}
               >
-                <Save className="w-4 h-4 me-2" />
+                
                 {isSubmitting ? "Registering..." : "Register Student"}
               </button>
             </div>
           </form>
         </main>
 
-        <footer className="mt-4 d-flex justify-content-between align-items-center text-sm text-muted">
-        
-          <div className="d-flex align-items-center gap-2">
-            <Receipt className="w-4 h-4" />
-            <span>Need help with registration?</span>
-          </div>
-        </footer>
+       
       </div>
     </div>
   );

@@ -25,9 +25,12 @@ export function ChatDetail() {
     teacherName: "", // Add teacherName to store current teacher's name
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
+  const scrollToBottomImmediate = () => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
   }
 
   // Helper function to detect if a message contains an image URL
@@ -87,11 +90,29 @@ export function ChatDetail() {
       });
       
       // Scroll to bottom instantly after messages are loaded
-      requestAnimationFrame(scrollToBottom)
+      requestAnimationFrame(() => scrollToBottomImmediate())
     })
 
     // Cleanup subscription on unmount
     return () => unsubscribe()
+  }, [id])
+
+  // Scroll to bottom when component mounts or when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Use requestAnimationFrame for smoother rendering
+      requestAnimationFrame(() => {
+        scrollToBottomImmediate()
+      })
+    }
+  }, [messages.length])
+
+  // Scroll to bottom immediately when component mounts
+  useEffect(() => {
+    // Scroll immediately on mount, even before messages load
+    requestAnimationFrame(() => {
+      scrollToBottomImmediate()
+    })
   }, [id])
 
   // Handle ESC key for closing full-screen image
@@ -160,7 +181,7 @@ export function ChatDetail() {
       lastSentContentRef.current = messageToSend
       lastSentAtRef.current = now
       // Scroll to bottom instantly after sending message
-      requestAnimationFrame(scrollToBottom)
+      requestAnimationFrame(() => scrollToBottomImmediate())
     } catch (error) {
       console.error("Error sending message:", error)
       // Restore input so user doesn't lose the message on error
@@ -198,7 +219,7 @@ export function ChatDetail() {
       })
 
       // Scroll to bottom after sending file
-      requestAnimationFrame(scrollToBottom)
+      requestAnimationFrame(() => scrollToBottomImmediate())
     } catch (error) {
       console.error("Error sending file message:", error)
       alert('Failed to send image. Please try again.')
@@ -232,7 +253,11 @@ export function ChatDetail() {
       </div>
 
       {/* Scrollable messages area */}
-      <div className="flex-grow-1 overflow-auto px-3 py-2 bg-white position-relative">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-grow-1 overflow-auto px-3 py-2 bg-white position-relative"
+        style={{ scrollBehavior: 'auto' }}
+      >
         {messages.length > 0 ? (
           <>
             {messages.map((message) => {
