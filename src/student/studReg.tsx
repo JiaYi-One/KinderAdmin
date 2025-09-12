@@ -209,6 +209,21 @@ function formatICNumber(value: string): string {
   }
 }
 
+function normalizePhoneNumber(phoneNumber: string): string {
+  // Remove all non-digit characters and normalize phone number
+  const digitsOnly = phoneNumber.replace(/\D/g, '');
+  
+  // Handle Malaysian phone numbers
+  // Convert +60 or 0060 prefix to just the local format
+  if (digitsOnly.startsWith('60')) {
+    return digitsOnly.substring(2); // Remove country code
+  } else if (digitsOnly.startsWith('0')) {
+    return digitsOnly.substring(1); // Remove leading 0
+  }
+  
+  return digitsOnly;
+}
+
 async function getChildrenNames(studentIds: string[]): Promise<string[]> {
   if (studentIds.length === 0) return [];
   
@@ -255,8 +270,10 @@ function StudReg() {
     student_id?: string[];
     childrenNames?: string[];
     relationship?: string;
+    matchType?: string;
   } | null>(null);
   const [showExistingParentInfo, setShowExistingParentInfo] = useState(false);
+  const [existingParentAcknowledged, setExistingParentAcknowledged] = useState(false);
   const [icError, setIcError] = useState<string>("");
 
   // Initialize form with unique IDs
@@ -325,16 +342,22 @@ function StudReg() {
 
     // Check for existing parent when parent info changes
     if (name === "parentName" || name === "parentPhone" || name === "parentEmail") {
-      checkForExistingParent();
+      // Pass the new values directly since state update is async
+      const updatedFormData = { ...formData, [name]: value };
+      checkForExistingParent(updatedFormData.parentPhone, updatedFormData.parentEmail);
     }
   };
 
-  const checkForExistingParent = async () => {
-    const { parentPhone, parentEmail } = formData;
+  const checkForExistingParent = async (phoneValue?: string, emailValue?: string) => {
+    // Use passed parameters or fall back to current form data
+    const parentPhone = phoneValue || formData.parentPhone;
+    const parentEmail = emailValue || formData.parentEmail;
 
-    // Only treat email or phone as unique identifiers
+    // Need at least one field to check for existing parent
     const emailTrimmed = parentEmail.trim();
     const phoneTrimmed = parentPhone.trim();
+
+    console.log("Checking for existing parent:", { phoneTrimmed, emailTrimmed });
 
     if (!emailTrimmed && !phoneTrimmed) {
       setExistingParent(null);
@@ -344,41 +367,106 @@ function StudReg() {
 
     try {
       const parentsRef = collection(db, "parents");
+      let foundParent = null;
+      let matchType = "";
 
-      // Prefer email if provided; otherwise use phone
-      const parentQuery = emailTrimmed
-        ? query(parentsRef, where("email", "==", emailTrimmed))
-        : query(parentsRef, where("phone", "==", phoneTrimmed));
-
-      const querySnapshot = await getDocs(parentQuery);
-
-      if (!querySnapshot.empty) {
-        const parentDoc = querySnapshot.docs[0];
-        const parentData = parentDoc.data();
-
-        const childrenNames = await getChildrenNames(parentData.student_id || []);
-
-        setExistingParent({
-          id: parentDoc.id,
-          name: parentData.name,
-          phone: parentData.phone,
-          email: parentData.email,
-          student_id: parentData.student_id,
-          childrenNames: childrenNames,
-          relationship: parentData.relationship,
-        });
-        setShowExistingParentInfo(true);
-        return;
+      // Check for email match first
+      if (emailTrimmed) {
+        const emailQuery = query(parentsRef, where("email", "==", emailTrimmed));
+        const emailSnapshot = await getDocs(emailQuery);
+        
+        if (!emailSnapshot.empty) {
+          const parentDoc = emailSnapshot.docs[0];
+          const parentData = parentDoc.data();
+          
+          // Check if phone also matches (perfect match)
+          if (phoneTrimmed && (parentData.phone === phoneTrimmed || 
+              normalizePhoneNumber(parentData.phone || '') === normalizePhoneNumber(phoneTrimmed))) {
+            matchType = "both";
+          } else {
+            matchType = "email";
+          }
+          
+          foundParent = {
+            doc: parentDoc,
+            data: parentData,
+            matchType: matchType
+          };
+        }
       }
 
-      setExistingParent(null);
-      setShowExistingParentInfo(false);
+      // If no email match found, check for phone match
+      if (!foundParent && phoneTrimmed) {
+        // First try exact match
+        const phoneQuery = query(parentsRef, where("phone", "==", phoneTrimmed));
+        const phoneSnapshot = await getDocs(phoneQuery);
+        
+        if (!phoneSnapshot.empty) {
+          const parentDoc = phoneSnapshot.docs[0];
+          const parentData = parentDoc.data();
+          
+          foundParent = {
+            doc: parentDoc,
+            data: parentData,
+            matchType: "phone"
+          };
+        } else {
+          // If no exact match, try to find phone numbers that match when normalized
+          console.log("No exact phone match found, trying normalized matching...");
+          const allParentsSnapshot = await getDocs(parentsRef);
+          const normalizedInput = normalizePhoneNumber(phoneTrimmed);
+          console.log("Normalized input:", normalizedInput);
+          
+          for (const parentDoc of allParentsSnapshot.docs) {
+            const parentData = parentDoc.data();
+            const storedPhone = parentData.phone;
+            const normalizedStored = normalizePhoneNumber(storedPhone || '');
+            
+            console.log(`Comparing: stored="${storedPhone}" (normalized: "${normalizedStored}") vs input="${phoneTrimmed}" (normalized: "${normalizedInput}")`);
+            
+            if (storedPhone && normalizedStored === normalizedInput) {
+              console.log("Found normalized phone match!");
+              foundParent = {
+                doc: parentDoc,
+                data: parentData,
+                matchType: "phone"
+              };
+              break;
+            }
+          }
+        }
+      }
+
+      if (foundParent) {
+        const childrenNames = await getChildrenNames(foundParent.data.student_id || []);
+
+        const existingParentData = {
+          id: foundParent.doc.id,
+          name: foundParent.data.name,
+          phone: foundParent.data.phone,
+          email: foundParent.data.email,
+          student_id: foundParent.data.student_id,
+          childrenNames: childrenNames,
+          relationship: foundParent.data.relationship,
+          matchType: foundParent.matchType, // Add match type info
+        };
+
+        setExistingParent(existingParentData);
+        setShowExistingParentInfo(true);
+        setExistingParentAcknowledged(false); // Reset acknowledgment for new parent
+
+        // Store the existing parent ID for later use, but don't auto-fill form
+        // Let admin verify and modify input if needed
+      } else {
+        setExistingParent(null);
+        setShowExistingParentInfo(false);
+      }
     } catch (error) {
       console.error("Error checking for existing parent:", error);
     }
   };
 
-  const useExistingParent = () => {
+  const fillExistingParentData = async () => {
     if (existingParent) {
       setFormData(prev => ({
         ...prev,
@@ -393,39 +481,57 @@ function StudReg() {
         ? existingParent.student_id[0]
         : undefined;
       if (firstChildId) {
-        (async () => {
-          try {
-            const childDoc = await getDoc(doc(db, "students", firstChildId));
-            const childData = childDoc.exists() ? childDoc.data() : undefined;
-            const existingRelationship = childData?.relationship as string | undefined;
-            if (existingRelationship) {
-              setFormData(prev => ({ ...prev, relationship: existingRelationship }));
-            }
-          } catch (err) {
-            console.error("Failed to get existing relationship:", err);
+        try {
+          const childDoc = await getDoc(doc(db, "students", firstChildId));
+          const childData = childDoc.exists() ? childDoc.data() : undefined;
+          const existingRelationship = childData?.relationship as string | undefined;
+          if (existingRelationship) {
+            setFormData(prev => ({ ...prev, relationship: existingRelationship }));
           }
-        })();
+        } catch (err) {
+          console.error("Failed to get existing relationship:", err);
+        }
       }
 
+      // Mark as acknowledged and hide the alert
+      setExistingParentAcknowledged(true);
       setShowExistingParentInfo(false);
+      
+     
     }
   };
 
-  const createNewParent = async () => {
-    const age = parseInt(formData.age) || 0;
-    const newStudId = await generateUniqueStudentId(age);
+  const clearParentForm = () => {
+    // Only clear parent-related fields, keep student information
     setFormData(prev => ({
       ...prev,
-      parentId: "P" + newStudId,
+      parentName: "",
+      parentPhone: "",
+      parentEmail: "",
+      relationship: "",
+      // Keep the parentId for new parent creation
+      parentId: "P" + prev.studentId,
     }));
+    
+    // Clear existing parent detection
     setExistingParent(null);
     setShowExistingParentInfo(false);
+    setExistingParentAcknowledged(false);
   };
+
+
 
 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if there's an unacknowledged existing parent
+    if (showExistingParentInfo && !existingParentAcknowledged) {
+      alert("⚠️ Please choose either 'Use Current Parent' or 'Clear Form' before submitting the form.");
+      return;
+    }
+    
     setIsSubmitting(true);
 
     try {
@@ -443,6 +549,15 @@ function StudReg() {
         parentId = existingParent.id;
         isNewParent = false;
       } else {
+        // Check if phone number already exists in Firestore
+        const parentsRef = collection(db, "parents");
+        const phoneQuery = query(parentsRef, where("phone", "==", formData.parentPhone.trim()));
+        const phoneSnapshot = await getDocs(phoneQuery);
+        
+        if (!phoneSnapshot.empty) {
+          throw new Error(`Phone number ${formData.parentPhone} is already registered. Please use a different phone number.`);
+        }
+
         // Create new parent authentication account
         const defaultPassword = formData.parentId;
         await createUserWithEmailAndPassword(
@@ -551,10 +666,17 @@ function StudReg() {
       });
       setExistingParent(null);
       setShowExistingParentInfo(false);
+      setExistingParentAcknowledged(false);
     } catch (error: unknown) {
       console.error("Error saving data:", error);
-      if (error instanceof Error && 'code' in error && error.code === 'auth/email-already-in-use') {
-        alert("This email is already registered. Please use a different email address.");
+      if (error instanceof Error) {
+        if ('code' in error && error.code === 'auth/email-already-in-use') {
+          alert("This email is already registered. Please use a different email address.");
+        } else if (error.message.includes("Phone number") && error.message.includes("already registered")) {
+          alert(error.message);
+        } else {
+          alert("Error saving data. Please try again.");
+        }
       } else {
         alert("Error saving data. Please try again.");
       }
@@ -756,44 +878,55 @@ function StudReg() {
               </div>
               <div className="mt-2">
                 <small className="text-muted">
-                  💡 Tip: If you enter information for an existing parent, we'll automatically detect and link the student to that parent account.
+                  We'll check for existing parents by email or phone number. If a match is found, we'll show you the existing details for verification. You can modify the input if needed.
                 </small>
               </div>
             </div>
 
             {/* Existing Parent Alert */}
             {showExistingParentInfo && existingParent && (
-              <div className="alert alert-info mb-4">
-                <h5 className="alert-heading">Existing Parent Found!</h5>
+              <div className="alert alert-warning mb-4">
                 <p>
-                  We found an existing parent with matching information:
+                  <strong>We found an existing parent with matching information. Please verify if the details below are correct:</strong>
                 </p>
-                <ul className="mb-3">
-                  <li><strong>Name:</strong> {existingParent.name}</li>
-                  <li><strong>Phone:</strong> {existingParent.phone}</li>
-                  <li><strong>Email:</strong> {existingParent.email}</li>
-                  <li><strong>Current Students:</strong> {existingParent.student_id?.length || 0}</li>
-                  {existingParent.childrenNames && existingParent.childrenNames.length > 0 && (
+                <div className="mb-3">
+                  <h6>Existing Parent Details:</h6>
+                  <ul className="mb-3">
+                    <li><strong>Name:</strong> {existingParent.name}</li>
                     <li>
-                      <strong>Children:</strong> {existingParent.childrenNames.join(", ")}
+                      <strong>Phone:</strong> {existingParent.phone}
+                      
                     </li>
-                  )}
-                </ul>
-                <div className="d-flex gap-2">
-                  <button 
-                    type="button" 
-                    className="btn btn-primary btn-sm"
-                    onClick={useExistingParent}
-                  >
-                    Use Existing Parent
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={createNewParent}
-                  >
-                    Create New Parent
-                  </button>
+                    <li>
+                      <strong>Email:</strong> {existingParent.email}
+             
+                    </li>
+                    <li><strong>Current Students:</strong> {existingParent.student_id?.length || 0}</li>
+                    {existingParent.childrenNames && existingParent.childrenNames.length > 0 && (
+                      <li>
+                        <strong>Existing Children:</strong> {existingParent.childrenNames.join(", ")}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                <div className="p-3 rounded">
+                  
+                  <div className="d-flex justify-content-center gap-3 mt-3">
+                    <button 
+                      type="button" 
+                      className="btn btn-success"
+                      onClick={() => fillExistingParentData()}
+                    >
+                      Use Current Parent
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-danger"
+                      onClick={() => clearParentForm()}
+                    >
+                     Clear Form
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

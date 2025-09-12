@@ -218,7 +218,7 @@ function BillList() {
                     setSendingReminders(false);
                   }
                 }}
-                title="Send payment reminders for bills due in 3, 2, 1 days or overdue bills. Checks all unpaid bills and sends detailed notifications to parents."
+                
               >
                 {sendingReminders ? (
                   <>
@@ -229,11 +229,10 @@ function BillList() {
                   </>
                 ) : (
                   <>
-                    📢 Send Payment Reminders
+                    Send Reminder
                   </>
                 )}
               </button>
-              <Receipt className="w-8 h-8 text-primary" />
             </div>
           </div>
 

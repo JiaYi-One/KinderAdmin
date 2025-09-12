@@ -66,6 +66,10 @@ export default function AnnouncementsPage() {
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [editingComment, setEditingComment] = useState<string | null>(null)
+  const [editingReply, setEditingReply] = useState<string | null>(null)
+  const [editCommentText, setEditCommentText] = useState<string>("")
+  const [editReplyText, setEditReplyText] = useState<string>("")
 
   // Form state for creating/editing announcements
   const [formData, setFormData] = useState<FormData>({
@@ -112,6 +116,7 @@ export default function AnnouncementsPage() {
               authorRole: replyData.authorRole,
               parentId: replyData.parentId,
               createdAt: replyData.createdAt,
+              updatedAt: replyData.updatedAt,
               replies: [], // Add empty replies array for replies since they're leaf nodes
             }
           })
@@ -124,6 +129,7 @@ export default function AnnouncementsPage() {
             authorRole: commentData.authorRole,
             replies: replies,
             createdAt: commentData.createdAt,
+            updatedAt: commentData.updatedAt,
           })
         }
 
@@ -686,6 +692,164 @@ export default function AnnouncementsPage() {
     }
   }
 
+  // Edit comment function
+  const handleEditComment = async (announcementId: string, commentId: string) => {
+    if (!editCommentText.trim()) return
+
+    try {
+      const commentRef = doc(db, "announcements", announcementId, "comments", commentId)
+      await updateDoc(commentRef, {
+        content: editCommentText,
+        updatedAt: serverTimestamp(),
+      })
+
+      setAnnouncements(
+        announcements.map((ann) =>
+          ann.id === announcementId
+            ? {
+                ...ann,
+                comments: ann.comments.map((comment) =>
+                  comment.id === commentId
+                    ? { ...comment, content: editCommentText, updatedAt: new Date() }
+                    : comment
+                )
+              }
+            : ann
+        )
+      )
+
+      setEditingComment(null)
+      setEditCommentText("")
+    } catch (error) {
+      console.error("Error editing comment:", error)
+      alert("Error editing comment. Please try again.")
+    }
+  }
+
+  // Edit reply function
+  const handleEditReply = async (announcementId: string, commentId: string, replyId: string) => {
+    if (!editReplyText.trim()) return
+
+    try {
+      const replyRef = doc(db, "announcements", announcementId, "comments", commentId, "replies", replyId)
+      await updateDoc(replyRef, {
+        content: editReplyText,
+        updatedAt: serverTimestamp(),
+      })
+
+      setAnnouncements(
+        announcements.map((ann) =>
+          ann.id === announcementId
+            ? {
+                ...ann,
+                comments: ann.comments.map((comment) =>
+                  comment.id === commentId
+                    ? {
+                        ...comment,
+                        replies: comment.replies?.map((reply) =>
+                          reply.id === replyId
+                            ? { ...reply, content: editReplyText, updatedAt: new Date() }
+                            : reply
+                        )
+                      }
+                    : comment
+                )
+              }
+            : ann
+        )
+      )
+
+      setEditingReply(null)
+      setEditReplyText("")
+    } catch (error) {
+      console.error("Error editing reply:", error)
+      alert("Error editing reply. Please try again.")
+    }
+  }
+
+  // Delete comment function
+  const handleDeleteComment = async (announcementId: string, commentId: string) => {
+    if (!confirm("Are you sure you want to delete this comment?")) return
+
+    try {
+      const commentRef = doc(db, "announcements", announcementId, "comments", commentId)
+      await deleteDoc(commentRef)
+
+      setAnnouncements(
+        announcements.map((ann) =>
+          ann.id === announcementId
+            ? {
+                ...ann,
+                comments: ann.comments.filter((comment) => comment.id !== commentId)
+              }
+            : ann
+        )
+      )
+    } catch (error) {
+      console.error("Error deleting comment:", error)
+      alert("Error deleting comment. Please try again.")
+    }
+  }
+
+  // Delete reply function
+  const handleDeleteReply = async (announcementId: string, commentId: string, replyId: string) => {
+    if (!confirm("Are you sure you want to delete this reply?")) return
+
+    try {
+      const replyRef = doc(db, "announcements", announcementId, "comments", commentId, "replies", replyId)
+      await deleteDoc(replyRef)
+
+      setAnnouncements(
+        announcements.map((ann) =>
+          ann.id === announcementId
+            ? {
+                ...ann,
+                comments: ann.comments.map((comment) =>
+                  comment.id === commentId
+                    ? {
+                        ...comment,
+                        replies: comment.replies?.filter((reply) => reply.id !== replyId)
+                      }
+                    : comment
+                )
+              }
+            : ann
+        )
+      )
+    } catch (error) {
+      console.error("Error deleting reply:", error)
+      alert("Error deleting reply. Please try again.")
+    }
+  }
+
+  // Start editing comment
+  const startEditingComment = (comment: AnnouncementComment) => {
+    setEditingComment(comment.id)
+    setEditCommentText(comment.content)
+  }
+
+  // Start editing reply
+  const startEditingReply = (reply: AnnouncementComment) => {
+    setEditingReply(reply.id)
+    setEditReplyText(reply.content)
+  }
+
+  // Cancel editing
+  const cancelEditComment = () => {
+    setEditingComment(null)
+    setEditCommentText("")
+  }
+
+  const cancelEditReply = () => {
+    setEditingReply(null)
+    setEditReplyText("")
+  }
+
+  // Check if user can edit/delete comment or reply
+  const canEditDeleteComment = (comment: AnnouncementComment) => {
+    return currentUser?.name === comment.author
+  }
+
   const canEditDelete = (announcement: Announcement) => {
     return currentUser?.role === "admin" || (currentUser?.role === "teacher" && announcement.author === currentUser?.name)
   }
@@ -1225,21 +1389,74 @@ export default function AnnouncementsPage() {
                               }
                               secondary={
                                 <Box>
-                                  <Typography variant="body2" sx={{ color: 'text.primary' }}>
-                                    {comment.content}
-                                  </Typography>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
-                                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                      {comment.createdAt ? getRelativeTime(comment.createdAt) : 'Just now'}
-                                    </Typography>
-                                    <Button
-                                      size="small"
-                                      onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                                      sx={{ minWidth: 'auto', p: 0, color: 'text.secondary' }}
-                                    >
-                                      Reply
-                                    </Button>
-                                  </Box>
+                                  {editingComment === comment.id ? (
+                                    // Edit mode
+                                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                      <TextField
+                                        value={editCommentText}
+                                        onChange={(e) => setEditCommentText(e.target.value)}
+                                        size="small"
+                                        fullWidth
+                                        multiline
+                                        maxRows={3}
+                                        autoFocus
+                                      />
+                                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                        <IconButton
+                                          onClick={() => handleEditComment(announcement.id, comment.id)}
+                                          disabled={!editCommentText.trim()}
+                                          color="primary"
+                                          size="small"
+                                        >
+                                          <Send />
+                                        </IconButton>
+                                        <IconButton
+                                          onClick={cancelEditComment}
+                                          size="small"
+                                        >
+                                          <Close />
+                                        </IconButton>
+                                      </Box>
+                                    </Box>
+                                  ) : (
+                                    // View mode
+                                    <>
+                                      <Typography variant="body2" sx={{ color: 'text.primary' }}>
+                                        {comment.content}
+                                      </Typography>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                          {comment.createdAt ? getRelativeTime(comment.createdAt) : 'Just now'}
+                                          {comment.updatedAt && ' (edited)'}
+                                        </Typography>
+                                        <Button
+                                          size="small"
+                                          onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
+                                          sx={{ minWidth: 'auto', p: 0, color: 'text.secondary' }}
+                                        >
+                                          Reply
+                                        </Button>
+                                        {canEditDeleteComment(comment) && (
+                                          <>
+                                            <Button
+                                              size="small"
+                                              onClick={() => startEditingComment(comment)}
+                                              sx={{ minWidth: 'auto', p: 0, color: 'text.secondary' }}
+                                            >
+                                              Edit
+                                            </Button>
+                                            <Button
+                                              size="small"
+                                              onClick={() => handleDeleteComment(announcement.id, comment.id)}
+                                              sx={{ minWidth: 'auto', p: 0, color: 'error.main' }}
+                                            >
+                                              Delete
+                                            </Button>
+                                          </>
+                                        )}
+                                      </Box>
+                                    </>
+                                  )}
                                 </Box>
                               }
                               primaryTypographyProps={{ component: 'div' }}
@@ -1310,12 +1527,67 @@ export default function AnnouncementsPage() {
                                     }
                                     secondary={
                                       <Box>
-                                        <Typography variant="body2" sx={{ color: 'text.primary', fontSize: '0.875rem' }}>
-                                          {reply.content}
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                          {reply.createdAt ? getRelativeTime(reply.createdAt) : 'Just now'}
-                                        </Typography>
+                                        {editingReply === reply.id ? (
+                                          // Edit mode for reply
+                                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                            <TextField
+                                              value={editReplyText}
+                                              onChange={(e) => setEditReplyText(e.target.value)}
+                                              size="small"
+                                              fullWidth
+                                              multiline
+                                              maxRows={3}
+                                              autoFocus
+                                            />
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                              <IconButton
+                                                onClick={() => handleEditReply(announcement.id, comment.id, reply.id)}
+                                                disabled={!editReplyText.trim()}
+                                                color="primary"
+                                                size="small"
+                                              >
+                                                <Send />
+                                              </IconButton>
+                                              <IconButton
+                                                onClick={cancelEditReply}
+                                                size="small"
+                                              >
+                                                <Close />
+                                              </IconButton>
+                                            </Box>
+                                          </Box>
+                                        ) : (
+                                          // View mode for reply
+                                          <>
+                                            <Typography variant="body2" sx={{ color: 'text.primary', fontSize: '0.875rem' }}>
+                                              {reply.content}
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                                {reply.createdAt ? getRelativeTime(reply.createdAt) : 'Just now'}
+                                                {reply.updatedAt && ' (edited)'}
+                                              </Typography>
+                                              {canEditDeleteComment(reply) && (
+                                                <>
+                                                  <Button
+                                                    size="small"
+                                                    onClick={() => startEditingReply(reply)}
+                                                    sx={{ minWidth: 'auto', p: 0, color: 'text.secondary', fontSize: '0.75rem' }}
+                                                  >
+                                                    Edit
+                                                  </Button>
+                                                  <Button
+                                                    size="small"
+                                                    onClick={() => handleDeleteReply(announcement.id, comment.id, reply.id)}
+                                                    sx={{ minWidth: 'auto', p: 0, color: 'error.main', fontSize: '0.75rem' }}
+                                                  >
+                                                    Delete
+                                                  </Button>
+                                                </>
+                                              )}
+                                            </Box>
+                                          </>
+                                        )}
                                       </Box>
                                     }
                                     primaryTypographyProps={{ component: 'div' }}

@@ -427,7 +427,7 @@ function TeachersList() {
         <div className="bg-white rounded shadow p-4">
           <div className="d-flex justify-content-between align-items-center mb-4">
             <div className="d-flex align-items-center gap-3">
-              <h2 className="h3 fw-bold m-0">Users List</h2>
+              <h2 className="h3 fw-bold m-0">Staff List</h2>
               <select 
                 className="form-select w-auto"
                 value={selectedRole}

@@ -34,6 +34,7 @@ export interface AnnouncementComment {
   replies?: AnnouncementComment[]; // Make replies optional since replies are leaf nodes
   parentId?: string;
   createdAt?: Timestamp | Date | string; // Firebase timestamp, Date, or ISO string
+  updatedAt?: Timestamp | Date | string; // Firebase timestamp, Date, or ISO string
 }
 
 export interface User {
