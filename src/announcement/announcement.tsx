@@ -1284,7 +1284,14 @@ export default function AnnouncementsPage() {
               
               {/* Description Section */}
               <Box sx={{ p: 3, pt: 1, pb: 1 }}>
-                <Typography variant="body1" sx={{ color: 'text.primary', lineHeight: 1.6 }}>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    color: 'text.primary', 
+                    lineHeight: 1.6,
+                    whiteSpace: 'pre-line' // This preserves line breaks and spaces
+                  }}
+                >
                   {announcement.content}
                 </Typography>
               </Box>
@@ -1375,7 +1382,7 @@ export default function AnnouncementsPage() {
                             <ListItemText
                               primary={
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                                     {comment.author}
                                   </Typography>
                                   <Chip 
@@ -1512,7 +1519,7 @@ export default function AnnouncementsPage() {
                                   <ListItemText
                                     primary={
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: '500', fontSize: '0.875rem' }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>
                                           {reply.author}
                                         </Typography>
                                         <Chip 
