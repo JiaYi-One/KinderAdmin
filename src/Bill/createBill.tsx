@@ -50,7 +50,7 @@ interface Bill {
 interface BillItem {
   id: number;
   description: string;
-  amount: number;
+  amount: string | number;
 }
 
 interface FormData {
@@ -75,7 +75,7 @@ function CreateBill() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<BillItem[]>([
-    { id: 1, description: "Tuition Fee", amount: 0 },
+    { id: 1, description: "Tuition Fee", amount: "" },
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
@@ -295,7 +295,7 @@ function CreateBill() {
     const newItem = {
       id: Math.max(0, ...items.map((item) => item.id)) + 1,
       description: "",
-      amount: 0,
+      amount: "",
     };
     setItems([...items, newItem]);
   };
@@ -325,7 +325,7 @@ function CreateBill() {
           item.id === id
             ? {
                 ...item,
-                [field]: field === "amount" ? parseFloat(value) || 0 : value,
+                [field]: field === "amount" ? value : value,
               }
             : item
         )
@@ -385,7 +385,7 @@ function CreateBill() {
         return;
       }
   
-      if (!items.some(item => item.amount > 0)) {
+      if (!items.some(item => Number(item.amount) > 0)) {
         alert("Please add at least one item with an amount");
         return;
       }
@@ -490,7 +490,7 @@ function CreateBill() {
         billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
       });
       setSelectedStudentIds([]);
-      setItems([{ id: 1, description: "Tuition Fee", amount: 0 }]);
+      setItems([{ id: 1, description: "Tuition Fee", amount: "" }]);
   
     } catch (error) {
       console.error("Error creating bills:", error);
@@ -502,7 +502,7 @@ function CreateBill() {
     }
   };
 
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const total = items.reduce((sum, item) => sum + (parseFloat(String(item.amount)) || 0), 0);
 
   if (loading) {
     return (
@@ -759,18 +759,18 @@ function CreateBill() {
                            </td>
                           <td>
                             <input
-                              type="number"
+                              type="text"
                               value={item.amount}
                               className="form-control text-end"
-                              onChange={(e) =>
-                                handleInputChange(
-                                  item.id,
-                                  "amount",
-                                  e.target.value
-                                )
-                              }
-                              min="0"
-                              step="0.01"
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // Allow decimal input: digits, one decimal point, and up to 2 decimal places
+                                if (value === '' || /^\d*\.?\d{0,2}$/.test(value)) {
+                                  handleInputChange(item.id, "amount", value);
+                                }
+                              }}
+                              placeholder="0.00"
+                              inputMode="decimal"
                             />
                           </td>
                           <td className="text-center">
@@ -820,7 +820,7 @@ function CreateBill() {
                     className="btn btn-primary d-flex align-items-center gap-2"
                     disabled={
                       !selectedStudentIds.length ||
-                      !items.some((item) => item.amount > 0) ||
+                      !items.some((item) => Number(item.amount) > 0) ||
                       isSubmitting
                     }
                   >

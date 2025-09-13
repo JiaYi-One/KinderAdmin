@@ -1,5 +1,5 @@
 import { Firestore, collection, getDocs, query, where, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { sendPushNotification } from "./pushyClient";
+import { sendPushNotification } from "../notifications/pushyClient";
 
 
 function daysUntil(dateStr: string): number {

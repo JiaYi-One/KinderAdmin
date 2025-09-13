@@ -6,7 +6,7 @@ import {
   FormControl, InputLabel, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, FormControlLabel, Checkbox,
-  Tooltip
+  
 } from "@mui/material"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
 import GroupIcon from "@mui/icons-material/Group"
@@ -248,6 +248,27 @@ export default function AttendancePage() {
     setSelectedStudentForAbsent(null);
     setAbsentReason("");
     setHasAbsentReason(false);
+  }
+
+  const handleMarkAllPresent = () => {
+    if (!selectedClass || students.length === 0) return;
+    
+    // Mark all students as present except those on leave
+    const newAttendance = { ...attendance };
+    const newReasons = { ...attendanceReasons };
+    
+    students.forEach(student => {
+      if (newAttendance[student.id] !== "on leave") {
+        newAttendance[student.id] = "present";
+        // Clear any existing reasons for students being marked present
+        if (newReasons[student.id]) {
+          delete newReasons[student.id];
+        }
+      }
+    });
+    
+    setAttendance(newAttendance);
+    setAttendanceReasons(newReasons);
   }
 
   const handleSaveAttendance = async () => {
@@ -493,11 +514,45 @@ export default function AttendancePage() {
               padding: "16px"
             }}>
               <div style={{ marginBottom: "16px" }}>
-                <Typography variant="h6">Student Attendance</Typography>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <Typography variant="h6">Student Attendance</Typography>
+                  <Button
+                    onClick={handleMarkAllPresent}
+                    disabled={students.length === 0 || isWeekend}
+                    variant="contained"
+                    color="success"
+                    size="small"
+                  >
+                    Mark All Present
+                  </Button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                
+                
+                <Button
+                  onClick={handleSaveAttendance}
+                  disabled={
+                    isSaving ||
+                    students.length === 0 ||
+                    Object.keys(attendance).length !== students.length ||
+                    (attendanceExists && !isAttendanceModified()) ||
+                    isWeekend
+                  }
+                  variant="contained"
+                  color="primary"
+                >
+                  {isWeekend 
+                    ? "Cannot Save on Weekend"
+                    : isSaving
+                    ? (attendanceExists ? "Updating..." : "Saving...")
+                    : (attendanceExists ? "Update Attendance" : "Save Attendance")}
+                </Button>
+              </div>
                 <Typography variant="body2" color="text.secondary">
                   Mark attendance for {classes.find((c) => c.id === selectedClass)?.name}
                 </Typography>
               </div>
+              
               {loading ? (
                 <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
                   <Typography>Loading students...</Typography>
@@ -536,7 +591,7 @@ export default function AttendancePage() {
                           {attendanceReasons[student.id] && (
                             <Typography variant="body2" color="text.secondary" style={{ fontStyle: 'italic', marginTop: '4px' }}>
                               {attendance[student.id] === "on leave" 
-                                ? `On Leave (Reason: ${attendanceReasons[student.id]})`
+                                ? `Reason: ${attendanceReasons[student.id]}`
                                 : `Reason: ${attendanceReasons[student.id]}`
                               }
                             </Typography>
@@ -549,6 +604,7 @@ export default function AttendancePage() {
                           color="success"
                           size="small"
                           onClick={() => handleAttendanceChange(student.id, "present")}
+                          disabled={attendance[student.id] === "on leave"}
                         >
                           Present
                         </Button>
@@ -558,22 +614,25 @@ export default function AttendancePage() {
                           color="error"
                           size="small"
                           onClick={() => handleAttendanceChange(student.id, "absent")}
+                          disabled={attendance[student.id] === "on leave"}
                         >
                           Absent
-                        </Button> {/* On Leave button is disabled for teachers - leave status comes from parent applications */}
-                        <Tooltip title="Leave status is automatically set from parent applications">
-                          <span>
-                            <Button
-                              variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
-                              color="warning"
-                              size="small"
-                              disabled={true}
-                              style={{ opacity: attendance[student.id] === "on leave" ? 1 : 0.5 }}
-                            >
-                              On Leave
-                            </Button>
-                          </span>
-                        </Tooltip>
+                        </Button>
+                        
+                        <Button
+                          variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
+                          color="warning"
+                          size="small"
+                          onClick={() => handleAttendanceChange(student.id, "on leave")}
+                          disabled={attendance[student.id] !== "on leave"}
+                          style={{
+                            backgroundColor: attendance[student.id] === "on leave" ? "#ff9800" : undefined,
+                            color: attendance[student.id] === "on leave" ? "white" : undefined,
+                            opacity: attendance[student.id] === "on leave" ? 1 : 0.5
+                          }}
+                        >
+                          On Leave
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -581,6 +640,8 @@ export default function AttendancePage() {
               )}
 
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                
+                
                 <Button
                   onClick={handleSaveAttendance}
                   disabled={

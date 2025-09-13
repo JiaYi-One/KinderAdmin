@@ -2,6 +2,7 @@ import React, { ChangeEvent, useState } from "react";
 import { db } from "../firebase";
 import { collection, doc, setDoc, getDocs, getDoc, query, where } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { X } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 interface StudentForm {
@@ -274,6 +275,7 @@ function StudReg() {
   const [showExistingParentInfo, setShowExistingParentInfo] = useState(false);
   const [existingParentAcknowledged, setExistingParentAcknowledged] = useState(false);
   const [icError, setIcError] = useState<string>("");
+  const [customRelationshipMode, setCustomRelationshipMode] = useState(false);
 
   // Initialize form with unique IDs
   React.useEffect(() => {
@@ -333,6 +335,16 @@ function StudReg() {
         }));
       }
     } else {
+      // Handle relationship field specially for custom input
+      if (name === "relationship" && value === "Other") {
+        setCustomRelationshipMode(true);
+        setFormData((prev) => ({
+          ...prev,
+          relationship: "",
+        }));
+        return;
+      }
+
       setFormData((prev) => ({
         ...prev,
         [name]: value,
@@ -369,28 +381,34 @@ function StudReg() {
       let foundParent = null;
       let matchType = "";
 
-      // Check for email match first
+      // Check for email match first (case insensitive)
       if (emailTrimmed) {
-        const emailQuery = query(parentsRef, where("email", "==", emailTrimmed));
-        const emailSnapshot = await getDocs(emailQuery);
+        // Since Firestore doesn't support case insensitive queries directly,
+        // we need to get all parents and filter manually
+        const allParentsSnapshot = await getDocs(parentsRef);
+        const normalizedInputEmail = emailTrimmed.toLowerCase();
         
-        if (!emailSnapshot.empty) {
-          const parentDoc = emailSnapshot.docs[0];
+        for (const parentDoc of allParentsSnapshot.docs) {
           const parentData = parentDoc.data();
+          const storedEmail = parentData.email || '';
+          const normalizedStoredEmail = storedEmail.toLowerCase();
           
-          // Check if phone also matches (perfect match)
-          if (phoneTrimmed && (parentData.phone === phoneTrimmed || 
-              normalizePhoneNumber(parentData.phone || '') === normalizePhoneNumber(phoneTrimmed))) {
-            matchType = "both";
-          } else {
-            matchType = "email";
+          if (storedEmail && normalizedStoredEmail === normalizedInputEmail) {
+            // Check if phone also matches (perfect match)
+            if (phoneTrimmed && (parentData.phone === phoneTrimmed || 
+                normalizePhoneNumber(parentData.phone || '') === normalizePhoneNumber(phoneTrimmed))) {
+              matchType = "both";
+            } else {
+              matchType = "email";
+            }
+            
+            foundParent = {
+              doc: parentDoc,
+              data: parentData,
+              matchType: matchType
+            };
+            break; // Found a match, exit the loop
           }
-          
-          foundParent = {
-            doc: parentDoc,
-            data: parentData,
-            matchType: matchType
-          };
         }
       }
 
@@ -516,6 +534,9 @@ function StudReg() {
     setExistingParent(null);
     setShowExistingParentInfo(false);
     setExistingParentAcknowledged(false);
+    
+    // Reset custom relationship mode
+    setCustomRelationshipMode(false);
   };
 
 
@@ -548,13 +569,27 @@ function StudReg() {
         parentId = existingParent.id;
         isNewParent = false;
       } else {
-        // Check if phone number already exists in Firestore
+        // Check if phone number or email already exists in Firestore
         const parentsRef = collection(db, "parents");
         const phoneQuery = query(parentsRef, where("phone", "==", formData.parentPhone.trim()));
         const phoneSnapshot = await getDocs(phoneQuery);
         
         if (!phoneSnapshot.empty) {
           throw new Error(`Phone number ${formData.parentPhone} is already registered. Please use a different phone number.`);
+        }
+
+        // Check for duplicate email (case insensitive)
+        const allParentsSnapshot = await getDocs(parentsRef);
+        const normalizedInputEmail = formData.parentEmail.trim().toLowerCase();
+        
+        for (const parentDoc of allParentsSnapshot.docs) {
+          const parentData = parentDoc.data();
+          const storedEmail = parentData.email || '';
+          const normalizedStoredEmail = storedEmail.toLowerCase();
+          
+          if (storedEmail && normalizedStoredEmail === normalizedInputEmail) {
+            throw new Error(`Email address ${formData.parentEmail} is already registered. Please use a different email address.`);
+          }
         }
 
         // Create new parent authentication account
@@ -666,6 +701,7 @@ function StudReg() {
       setExistingParent(null);
       setShowExistingParentInfo(false);
       setExistingParentAcknowledged(false);
+      setCustomRelationshipMode(false);
     } catch (error: unknown) {
       console.error("Error saving data:", error);
       if (error instanceof Error) {
@@ -834,8 +870,34 @@ function StudReg() {
                   <label className="form-label" htmlFor="relationship">
                     Relationship to Student
                   </label>
-                  <div className="row">
-                    <div className={formData.relationship === "Other" ? "col-md-6" : "col-md-12"}>
+                  <div>
+                    {customRelationshipMode && !(existingParent && formData.parentId === existingParent.id) ? (
+                      <div className="d-flex gap-2">
+                        <input
+                          type="text"
+                          name="relationship"
+                          value={formData.relationship}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                            setFormData(prev => ({ ...prev, relationship: e.target.value }))
+                          }
+                          className="form-control"
+                          placeholder="e.g., Uncle, Aunt, Legal Guardian"
+                          required
+                          id="otherRelationship"
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm"
+                          onClick={() => {
+                            setCustomRelationshipMode(false);
+                            setFormData(prev => ({ ...prev, relationship: "" }));
+                          }}
+                          title="Back to dropdown"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
                       <select
                         name="relationship"
                         value={formData.relationship}
@@ -852,24 +914,7 @@ function StudReg() {
                         <option value="Grandmother">Grandmother</option>
                         <option value="Other">Other</option>
                       </select>
-                    </div>
-                    {formData.relationship === "Other" && !(existingParent && formData.parentId === existingParent.id) && (
-                      <div className="col-md-6">
-                        <input
-                          type="text"
-                          name="relationship"
-                          value={formData.relationship === "Other" ? "" : formData.relationship}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                            setFormData(prev => ({ ...prev, relationship: e.target.value }))
-                          }
-                          className="form-control"
-                          placeholder="e.g., Uncle, Aunt, Legal Guardian"
-                          required
-                          id="otherRelationship"
-                        />
-                      </div>
                     )}
-                    
                   </div>
                 </div>
               </div>

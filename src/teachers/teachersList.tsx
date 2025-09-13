@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, getDoc, serverTimestamp } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, updatePassword, deleteUser } from "firebase/auth";
+import { Plus, X } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
 
@@ -18,6 +19,12 @@ interface Teacher {
   teacherPhone: string;
   subjectClasses: SubjectClass[];
   role: 'teacher' | 'admin';
+}
+
+interface SubjectTemplate {
+  id: string;
+  subject: string;
+  createdAt: Date;
 }
 
 function TeachersList() {
@@ -39,9 +46,77 @@ function TeachersList() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [subjectTemplates, setSubjectTemplates] = useState<SubjectTemplate[]>([]);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [newSubject, setNewSubject] = useState("");
+  const [showSubjectSaved, setShowSubjectSaved] = useState(false);
 
   const classArray = ["3Y", "4Y", "5Y", "6Y"];
-  const subjectArray = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+  const defaultSubjects = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+
+  // Load subject templates from localStorage
+  const loadSubjectTemplates = () => {
+    try {
+      const saved = localStorage.getItem('teacherSubjectTemplates');
+      if (saved) {
+        const templates = JSON.parse(saved).map((t: { id: string; subject: string; createdAt: string }) => ({
+          ...t,
+          createdAt: new Date(t.createdAt)
+        }));
+        setSubjectTemplates(templates);
+      } else {
+        // Initialize with default subjects
+        const defaultTemplates = defaultSubjects.map((subject, index) => ({
+          id: (index + 1).toString(),
+          subject: subject,
+          createdAt: new Date()
+        }));
+        setSubjectTemplates(defaultTemplates);
+        localStorage.setItem('teacherSubjectTemplates', JSON.stringify(defaultTemplates));
+      }
+    } catch (error) {
+      console.error('Error loading subject templates:', error);
+    }
+  };
+
+  // Save subject templates to localStorage
+  const saveSubjectTemplates = (templates: SubjectTemplate[]) => {
+    try {
+      localStorage.setItem('teacherSubjectTemplates', JSON.stringify(templates));
+      setSubjectTemplates(templates);
+    } catch (error) {
+      console.error('Error saving subject templates:', error);
+    }
+  };
+
+  // Add new subject template
+  const addSubjectTemplate = () => {
+    if (newSubject.trim()) {
+      const newTemplate: SubjectTemplate = {
+        id: Date.now().toString(),
+        subject: newSubject.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...subjectTemplates, newTemplate];
+      saveSubjectTemplates(updatedTemplates);
+      setNewSubject("");
+      
+      // Show brief notification
+      setShowSubjectSaved(true);
+      setTimeout(() => setShowSubjectSaved(false), 2000);
+    }
+  };
+
+  // Delete subject template
+  const deleteSubjectTemplate = (id: string) => {
+    const updatedTemplates = subjectTemplates.filter(t => t.id !== id);
+    saveSubjectTemplates(updatedTemplates);
+  };
+
+  // Get all available subjects (default + templates)
+  const getAllSubjects = () => {
+    return subjectTemplates.map(t => t.subject);
+  };
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -63,6 +138,7 @@ function TeachersList() {
 
   useEffect(() => {
     fetchTeachers();
+    loadSubjectTemplates();
   }, [fetchTeachers]);
 
   const handleTeacherClick = (teacher: Teacher) => {
@@ -76,6 +152,7 @@ function TeachersList() {
     setSelectedTeacher(null);
     setEditedTeacher(null);
     setIsEditing(false);
+    setIsAddMode(false);
     setError("");
     setSelectedUserType(null);
   };
@@ -163,7 +240,14 @@ function TeachersList() {
 
       // Validate required fields
       if (!editedTeacher?.teacherName || !editedTeacher?.teacherEmail || !editedTeacher?.teacherPhone || !editedTeacher?.teacherID) {
-        setError("All fields are required");
+        setError("Please fill in all required fields: Name, Email, Phone, and ID");
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editedTeacher.teacherEmail)) {
+        setError("Please enter a valid email address");
         return;
       }
 
@@ -270,8 +354,16 @@ function TeachersList() {
 
       // Refresh the list
       await fetchTeachers();
+      
+      // Reset all states after successful save
       setShowTeacherDetails(false);
       setShowCredentials(false);
+      setIsAddMode(false);
+      setIsEditing(false);
+      setEditedTeacher(null);
+      setSelectedTeacher(null);
+      setSelectedUserType(null);
+      setError("");
     } catch (error) {
       console.error("Error in handleSave:", error);
       if (error instanceof Error) {
@@ -407,6 +499,8 @@ function TeachersList() {
     }
   };
 
+ 
+
   if (loading) {
     return (
       <div className="min-vh-100 bg-light p-4">
@@ -437,7 +531,17 @@ function TeachersList() {
                 <option value="admin">Administrators</option>
               </select>
             </div>
-            <button className="btn btn-success" onClick={handleAddTeacherClick}>Add</button>
+            <div className="d-flex gap-2">
+              <button 
+                className="btn btn-info" 
+                onClick={() => setShowSubjectModal(true)}
+                title="Manage Subject Templates"
+              >
+                Manage Subjects
+              </button>
+             
+              <button className="btn btn-success" onClick={handleAddTeacherClick}>Add</button>
+            </div>
           </div>
 
           {/* User Type Selection Modal */}
@@ -545,6 +649,8 @@ function TeachersList() {
                   <div className="modal-body">
                     {error && <div className="alert alert-danger">{error}</div>}
                     
+                    
+                    
                     <div className="mb-3">
                       <label className="form-label fw-bold">ID:</label>
                       <input
@@ -561,7 +667,9 @@ function TeachersList() {
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Name</label>
+                      <label className="form-label">
+                        Name <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="text"
                         className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
@@ -569,14 +677,15 @@ function TeachersList() {
                         value={editedTeacher?.teacherName || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing && !isAddMode}
+                        disabled={!isAddMode}
+                        placeholder={isAddMode ? "Enter teacher name" : ""}
                       />
-                      {!isAddMode && (
-                        <div className="form-text text-muted">Name cannot be edited</div>
-                      )}
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Email</label>
+                      <label className="form-label">
+                        Email <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="email"
                         className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
@@ -584,14 +693,15 @@ function TeachersList() {
                         value={editedTeacher?.teacherEmail || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing && !isAddMode}
+                        disabled={!isAddMode}
+                        placeholder={isAddMode ? "Enter email address" : ""}
                       />
-                      {!isAddMode && (
-                        <div className="form-text text-muted">Email cannot be edited</div>
-                      )}
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Phone</label>
+                      <label className="form-label">
+                        Phone <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="tel"
                         className={`form-control${!isEditing ? ' bg-light' : ''}`}
@@ -599,6 +709,7 @@ function TeachersList() {
                         value={editedTeacher?.teacherPhone || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing}
+                        placeholder={isAddMode ? "Enter phone number" : ""}
                       />
                     </div>
 
@@ -618,7 +729,7 @@ function TeachersList() {
                                   required
                                 >
                                   <option value="">Select Subject</option>
-                                  {subjectArray.map(subject => (
+                                  {getAllSubjects().map(subject => (
                                     <option key={subject} value={subject}>{subject}</option>
                                   ))}
                                 </select>
@@ -739,6 +850,12 @@ function TeachersList() {
                       setShowCredentials(false);
                       setShowTeacherDetails(false);
                       setGeneratedCredentials(null);
+                      setIsAddMode(false);
+                      setIsEditing(false);
+                      setEditedTeacher(null);
+                      setSelectedTeacher(null);
+                      setSelectedUserType(null);
+                      setError("");
                     }}></button>
                   </div>
                   <div className="modal-body">
@@ -759,6 +876,12 @@ function TeachersList() {
                         setShowCredentials(false);
                         setShowTeacherDetails(false);
                         setGeneratedCredentials(null);
+                        setIsAddMode(false);
+                        setIsEditing(false);
+                        setEditedTeacher(null);
+                        setSelectedTeacher(null);
+                        setSelectedUserType(null);
+                        setError("");
                       }}
                     >
                       Close
@@ -830,6 +953,106 @@ function TeachersList() {
                       onClick={handleUpdatePassword}
                     >
                       Update Password
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subject Saved Notification */}
+          {showSubjectSaved && (
+            <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
+              <div className="toast show" role="alert">
+                <div className="toast-body">
+                  New subject has been added to your templates.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subject Template Modal */}
+          {showSubjectModal && (
+            <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <div className="modal-dialog modal-lg">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Manage Subject Templates</h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => {
+                        setShowSubjectModal(false);
+                        setNewSubject("");
+                      }}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    {/* Add New Subject */}
+                    <div className="mb-4">
+                      <label className="form-label">Add New Subject</label>
+                      <div className="d-flex gap-2">
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={newSubject}
+                          onChange={(e) => setNewSubject(e.target.value)}
+                          placeholder="Enter subject name"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              addSubjectTemplate();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={addSubjectTemplate}
+                          disabled={!newSubject.trim()}
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Existing Subjects */}
+                    <div>
+                      <label className="form-label">Available Subjects</label>
+                      <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                        {subjectTemplates.length === 0 ? (
+                          <div className="text-muted text-center py-3">
+                            No subjects available. Add your first subject above.
+                          </div>
+                        ) : (
+                          subjectTemplates.map((template) => (
+                            <div
+                              key={template.id}
+                              className="list-group-item d-flex justify-content-between align-items-center"
+                            >
+                              <span>{template.subject}</span>
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => deleteSubjectTemplate(template.id)}
+                                title="Delete subject"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowSubjectModal(false);
+                        setNewSubject("");
+                      }}
+                    >
+                      Close
                     </button>
                   </div>
                 </div>

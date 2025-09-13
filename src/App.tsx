@@ -8,7 +8,9 @@ import ParentList from "./parent/parentList";
 import TeachersList from "./teachers/teachersList";
 import Login from "./auth/login";
 import { useEffect, useState } from "react";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword } from "firebase/auth";
+import { db } from "./firebase";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import AttendancePage from "./attendance/AttendanceMain";
 import TakeAttendance from "./attendance/TakeAttendance";
 import AttendanceReport from "./attendance/AttendanceReport";
@@ -24,14 +26,87 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const createSeedAdmin = async () => {
+    try {
+      const adminData = {
+        teacherID: "A25K1234",
+        teacherName: "Lim Jia Yi",
+        teacherEmail: "anniejiayi278@gmail.com",
+        teacherPhone: "01124024255",
+        role: "admin" as const,
+        subjectClasses: [],
+        createdAt: serverTimestamp()
+      };
+
+      console.log("App startup: Checking seed admin...");
+
+      // Check if admin already exists in Firestore staff collection
+      const adminRef = doc(db, "staff", adminData.teacherName);
+      const adminDoc = await getDoc(adminRef);
+      
+      if (adminDoc.exists()) {
+        console.log("App startup: Seed admin already exists - skipping creation");
+        return;
+      }
+
+      // Create Firebase Auth account if it doesn't exist
+      try {
+        const auth = getAuth();
+        const userCredential = await createUserWithEmailAndPassword(auth, adminData.teacherEmail, adminData.teacherID);
+        const uid = userCredential.user.uid;
+        
+        console.log("App startup: Firebase Auth account created with UID:", uid);
+
+        // Create admin document in Firestore
+        const finalAdminData = {
+          ...adminData,
+          uid: uid
+        };
+
+        await setDoc(adminRef, finalAdminData);
+        console.log("App startup: Seed admin created successfully:", finalAdminData);
+        
+      } catch (authError) {
+        if (authError instanceof Error) {
+          if (authError.message.includes('email-already-in-use')) {
+            console.log("App startup: Email already exists in Firebase Auth - seed admin already exists");
+          } else {
+            console.error("App startup: Firebase Auth error:", authError);
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error("App startup: Error creating seed admin:", error);
+    }
+  };
+
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      setLoading(false);
+    const initializeApp = async () => {
+      // First create seed admin if needed
+      await createSeedAdmin();
+      
+      // Then set up auth listener
+      const auth = getAuth();
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        setIsAuthenticated(!!user);
+        setLoading(false);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | undefined;
+    
+    initializeApp().then((unsub) => {
+      unsubscribe = unsub;
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   if (loading) {
@@ -46,9 +121,12 @@ function App() {
 
   return (
     <>
-      <NavigationBar />
+      {isAuthenticated && <NavigationBar />}
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route 
+          path="/" 
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} 
+        />
         <Route 
           path="/login" 
           element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} 
@@ -118,6 +196,12 @@ function App() {
         <Route 
           path="/announcements" 
           element={isAuthenticated ? <AnnouncementsPage /> : <Navigate to="/login" replace />} 
+        />
+        
+        {/* Catch-all route - redirect to login if not authenticated, otherwise to dashboard */}
+        <Route 
+          path="*" 
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} 
         />
         
       </Routes>

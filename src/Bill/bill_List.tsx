@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { runDueDateReminders } from "../notifications/checkDueDateReminders";
+import { runDueDateReminders } from "./checkDueDateReminders";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc, query, orderBy } from "firebase/firestore";
 import { Receipt, Search, Filter, CheckCircle, XCircle, Clock } from "lucide-react";
@@ -205,10 +205,10 @@ function BillList() {
                     const result = await runDueDateReminders(db);
                     
                     const successMessage = result.sent > 0 
-                      ? `✅ Successfully sent ${result.sent} individual bill reminder${result.sent > 1 ? 's' : ''} for ${result.candidates} unpaid bill${result.candidates > 1 ? 's' : ''}! Each bill gets its own notification.`
+                      ? `Successfully sent ${result.sent} individual bill reminder${result.sent > 1 ? 's' : ''} for ${result.candidates} unpaid bill${result.candidates > 1 ? 's' : ''}! Each bill gets its own notification.`
                       : result.candidates > 0 
-                        ? `⚠️ Found ${result.candidates} unpaid bill${result.candidates > 1 ? 's' : ''} requiring reminders but no notifications were sent. Please check device tokens and server connection.`
-                        : `ℹ️ No unpaid bills requiring reminders found. All bills are either paid or not yet due for reminders.`;
+                        ? `Found ${result.candidates} unpaid bill${result.candidates > 1 ? 's' : ''} requiring reminders but no notifications were sent. Please check device tokens and server connection.`
+                        : `No unpaid bills requiring reminders found. All bills are either paid or not yet due for reminders.`;
                     
                     alert(successMessage);
                   } catch (error) {
