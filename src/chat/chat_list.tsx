@@ -57,7 +57,36 @@ export function ChatList() {
           const unsubscribe = ChatService.subscribeToChats((chats: ChatType[]) => {
             // Filter chats for current teacher using webUser field
             const teacherChats = chats.filter(chat => chat.webUser === teacherID);
-            
+
+            // Group by parentId to unify multiple children under the same parent
+            type Group = {
+              parentId: string;
+              parentName: string;
+              childNames: Set<string>;
+              latestChat: ChatType | null;
+              unreadSum: number;
+            };
+
+            const groups = new Map<string, Group>();
+
+            for (const chat of teacherChats) {
+              if (!groups.has(chat.parentId)) {
+                groups.set(chat.parentId, {
+                  parentId: chat.parentId,
+                  parentName: chat.parentName,
+                  childNames: new Set<string>(),
+                  latestChat: null,
+                  unreadSum: 0,
+                });
+              }
+              const g = groups.get(chat.parentId)!;
+              if (chat.studentName) g.childNames.add(chat.studentName);
+              g.unreadSum += chat.unreadWeb || 0;
+              if (!g.latestChat || (chat.lastMessageTime && g.latestChat.lastMessageTime && chat.lastMessageTime > g.latestChat.lastMessageTime) || (!g.latestChat?.lastMessageTime && chat.lastMessageTime)) {
+                g.latestChat = chat;
+              }
+            }
+
             const formatChatTime = (date: Date) => {
               const now = new Date();
               const diffMs = now.getTime() - date.getTime();
@@ -69,28 +98,31 @@ export function ChatList() {
               }
             };
 
-            const chatList: Chat[] = teacherChats.map(chat => {
+            const chatList: Chat[] = Array.from(groups.values()).map(group => {
+              const latest = group.latestChat!;
               let time = '';
-              if (chat.lastMessageTime) {
-                time = formatChatTime(chat.lastMessageTime);
+              if (latest?.lastMessageTime) {
+                time = formatChatTime(latest.lastMessageTime);
               }
-              
+
               // Format last message based on type (similar to Flutter app)
-              let displayMessage = chat.lastMessage || 'No messages yet';
-              if (chat.lastMessageType === 'image' || isImageUrl(chat.lastMessage)) {
+              let displayMessage = latest?.lastMessage || 'No messages yet';
+              if (latest?.lastMessageType === 'image' || (latest?.lastMessage && isImageUrl(latest.lastMessage))) {
                 displayMessage = '[Image]';
               }
-              
+
+              const children = Array.from(group.childNames).join(', ');
+
               return {
-                id: chat.id,
-                // Show teacher as recipient since parents are sending messages to teachers
-                name: ` ${chat.parentName} - ${chat.studentName}`,
+                // Use latest chat id for navigation
+                id: latest?.id || group.parentId,
+                name: `${group.parentName}${children ? ' - ' + children : ''}`,
                 lastMessage: displayMessage,
                 time,
-                unread: chat.unreadWeb || 0 // Use web-specific unread count
+                unread: group.unreadSum,
               };
             });
-            
+
             setChats(chatList);
           });
 

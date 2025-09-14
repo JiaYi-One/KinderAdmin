@@ -57,7 +57,20 @@ export function ChatDetail() {
     // Mark chat as read when opening
     const markAsRead = async () => {
       try {
+        // Mark the current chat as read
         await ChatService.markChatAsRead(id)
+
+        // Also mark other chats from the same parent as read to keep unified entry consistent
+        const unsubscribeOnce = ChatService.subscribeToChats(async (chats) => {
+          const selected = chats.find(c => c.id === id)
+          if (!selected) return
+          const siblings = chats.filter(c => c.parentId === selected.parentId && c.id !== id)
+          for (const s of siblings) {
+            try { await ChatService.markChatAsRead(s.id) } catch {}
+          }
+          // unsubscribe after one run
+          unsubscribeOnce()
+        })
       } catch (error) {
         console.error('Error marking chat as read:', error)
       }
@@ -130,19 +143,23 @@ export function ChatDetail() {
   useEffect(() => {
     if (!id) return
 
-    // Subscribe to chat updates to get chat info
+    // Subscribe to chat updates to get chat info and aggregate all children under the same parent
     const unsubscribe = ChatService.subscribeToChats((chats) => {
-      const currentChat = chats.find(chat => chat.id === id)
-      if (currentChat) {
-        setChatInfo({
-          name: currentChat.parentName,
-          avatar: currentChat.image || "",
-          studentName: currentChat.studentName,
-          parentName: currentChat.parentName,
-          webUser: currentChat.webUser, // Store the webUser ID
-          teacherName: currentChat.teacherName, // Store the teacher's name
-        })
-      }
+      const selected = chats.find(chat => chat.id === id)
+      if (!selected) return
+
+      // Find all chats with the same parentId to gather children names
+      const siblingChats = chats.filter(chat => chat.parentId === selected.parentId)
+      const childNames = Array.from(new Set(siblingChats.map(c => c.studentName).filter(Boolean)))
+
+      setChatInfo({
+        name: selected.parentName,
+        avatar: selected.image || "",
+        studentName: childNames.join(', '),
+        parentName: selected.parentName,
+        webUser: selected.webUser,
+        teacherName: selected.teacherName,
+      })
     })
 
     return () => unsubscribe()
@@ -245,7 +262,6 @@ export function ChatDetail() {
       <div className="p-3 border-bottom bg-light d-flex align-items-center flex-shrink-0">
         <div>
           <h5 className="mb-0">
-            {/* Show that this is a chat with the parent about their child */}
             {chatInfo.parentName}
             {chatInfo.studentName && <span className="text-muted"> - {chatInfo.studentName}</span>}
           </h5>
