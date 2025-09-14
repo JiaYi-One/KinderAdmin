@@ -529,24 +529,7 @@ export default function AttendancePage() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
                 
                 
-                <Button
-                  onClick={handleSaveAttendance}
-                  disabled={
-                    isSaving ||
-                    students.length === 0 ||
-                    Object.keys(attendance).length !== students.length ||
-                    (attendanceExists && !isAttendanceModified()) ||
-                    isWeekend
-                  }
-                  variant="contained"
-                  color="primary"
-                >
-                  {isWeekend 
-                    ? "Cannot Save on Weekend"
-                    : isSaving
-                    ? (attendanceExists ? "Updating..." : "Saving...")
-                    : (attendanceExists ? "Update Attendance" : "Save Attendance")}
-                </Button>
+                
               </div>
                 <Typography variant="body2" color="text.secondary">
                   Mark attendance for {classes.find((c) => c.id === selectedClass)?.name}

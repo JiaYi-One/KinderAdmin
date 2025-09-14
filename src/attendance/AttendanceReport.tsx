@@ -99,6 +99,7 @@ function isWeekday(date: Date): boolean {
 
 
 
+
 // Types for attendance data
 interface WeeklyData {
   day: string;
@@ -124,6 +125,7 @@ interface Student {
   id: string;
   name: string;
   status: string;
+  reason?: string;
 }
 
 interface MonthSummary {
@@ -460,12 +462,13 @@ export default function ReportsPage() {
           const yyyymmdd = formatDate(date);
           try {
             const result = await AttendanceDataService.fetchClassAttendance(classId, yyyymmdd);
-            result.students.forEach((student: { id: string; name: string; status: string }) => {
+            result.students.forEach((student: { id: string; name: string; status: string; reason?: string }) => {
               if (!weekStudents[student.id]) {
                 weekStudents[student.id] = {
                   id: student.id,
                   name: student.name,
-                  status: 'present' // Default status, will be updated based on attendance
+                  status: 'present', // Default status, will be updated based on attendance
+                  reason: student.reason || ''
                 };
               }
               
@@ -477,6 +480,7 @@ export default function ReportsPage() {
                   (newStatus === 'on leave' && currentStatus !== 'present') ||
                   (newStatus === 'absent' && currentStatus !== 'present' && currentStatus !== 'on leave')) {
                 weekStudents[student.id].status = newStatus;
+                weekStudents[student.id].reason = student.reason || '';
               }
             });
           } catch (error) {
@@ -1262,7 +1266,16 @@ export default function ReportsPage() {
                             </ListItemIcon>
                             <ListItemText 
                               primary={student.name}
-                              secondary={`Student ID: ${student.id}`}
+                              secondary={
+                                <div>
+                                  <div>Student ID: {student.id}</div>
+                                  {(student.status === 'absent' || student.status === 'on leave') && student.reason && (
+                                    <div style={{ marginTop: 4, fontStyle: 'italic', color: 'text.secondary' }}>
+                                      {student.reason}
+                                    </div>
+                                  )}
+                                </div>
+                              }
                             />
                             <Chip 
                               label={student.status.toUpperCase()} 
@@ -1357,7 +1370,16 @@ export default function ReportsPage() {
                   </ListItemIcon>
                   <ListItemText 
                     primary={student.name}
-                    secondary={`Student ID: ${student.id}`}
+                    secondary={
+                      <div>
+                        <div>Student ID: {student.id}</div>
+                        {(student.status === 'absent' || student.status === 'on leave') && student.reason && (
+                          <div style={{ marginTop: 4, fontStyle: 'italic', color: 'text.secondary' }}>
+                            Reason: {student.reason}
+                          </div>
+                        )}
+                      </div>
+                    }
                   />
                   <Chip 
                     label={student.status.toUpperCase()} 

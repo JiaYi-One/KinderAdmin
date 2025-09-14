@@ -27,6 +27,7 @@ interface MonthlyAttendanceData {
             name: string;
             status: string;
             note?: string;
+            absenceType?: string;
         };
     };
 }
@@ -73,12 +74,20 @@ const AttendanceDataService = {
                     let present = 0, absent = 0, leave = 0;
                     
                     Object.entries(dayData).forEach(([studentId, studentData]) => {
+                        // Use absenceType for on leave, note for absent
+                        let reason = "";
+                        if (studentData.status === "on leave") {
+                            reason = studentData.absenceType || "";
+                        } else if (studentData.status === "absent") {
+                            reason = studentData.note || "";
+                        }
+                        
                         students.push({
                             id: studentId,
                             name: studentData.name,
                             status: studentData.status,
                             note: studentData.note,
-                            reason: ""
+                            reason: reason
                         });
                         
                         if (studentData.status === "present") present++;

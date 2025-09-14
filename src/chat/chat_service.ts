@@ -20,8 +20,9 @@ export type Message = {
 export type Chat = {
     id: string;
     parentId: string;
-    studentName: string;
+    studentName?: string; // Optional for unified chats
     parentName: string;
+    teacherId?: string; // Add teacher ID
     createdAt?: Date;
     lastMessage: string;
     lastMessageTime?: Date;
@@ -33,6 +34,8 @@ export type Chat = {
     image?: string;
     webUser: string;
     teacherName: string;
+    isUnified?: boolean; // Mark as unified chat
+    childContexts?: string[]; // Array of child IDs for unified chats
 };
 
 export class ChatService {
@@ -234,7 +237,54 @@ export class ChatService {
         });
     }
 
-    // Create a new chatS
+    // Create or get unified parent-teacher chat
+    static async createOrGetUnifiedChat(
+        parentId: string,
+        teacherId: string,
+        parentName: string,
+        teacherName: string
+    ): Promise<string> {
+        try {
+            // Check if unified chat already exists
+            const existingChatQuery = query(
+                collection(db, 'chats'),
+                where('parentId', '==', parentId),
+                where('teacherId', '==', teacherId),
+                where('isUnified', '==', true)
+            );
+
+            const existingChatSnapshot = await getDocs(existingChatQuery);
+
+            if (!existingChatSnapshot.empty) {
+                return existingChatSnapshot.docs[0].id;
+            }
+
+            // Create new unified chat
+            const chatRef = collection(db, 'chats');
+            const chatDoc = await addDoc(chatRef, {
+                parentId,
+                teacherId,
+                parentName,
+                teacherName,
+                isUnified: true, // Mark as unified chat
+                createdAt: serverTimestamp(),
+                lastMessage: 'Chat started',
+                lastMessageTime: serverTimestamp(),
+                lastMessageSender: teacherId,
+                lastMessageType: 'text',
+                unread: 0,
+                unreadWeb: 0,
+                unreadMobile: 0,
+            });
+
+            return chatDoc.id;
+        } catch (error) {
+            console.error('Error creating unified chat:', error);
+            throw error;
+        }
+    }
+
+    // Create a new chat (legacy method for teacher side)
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
             const teacherId = await this.getCurrentTeacherId();
