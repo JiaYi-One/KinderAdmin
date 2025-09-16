@@ -47,10 +47,9 @@ function FileUpload({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("upload_preset", "KinderCare"); // Set in Cloudinary
-      formData.append("folder", "announcement_images"); // Organize uploads in announcement_images folder
+      formData.append("upload_preset", "KinderCare");
+      formData.append("folder", "announcement_images"); 
 
-      // Upload as image since we only accept images
       const response = await fetch(
         `https://api.cloudinary.com/v1_1/dvremwz4m/image/upload`,
         {

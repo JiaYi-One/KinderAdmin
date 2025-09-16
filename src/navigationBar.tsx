@@ -99,22 +99,22 @@ const NavigationBar: FC = () => {
         </NavLink>
         
         <DropdownMenu
-          title="Academic"
+          title="Admin Management"
           currentPath={location.pathname}
           items={[
             { title: "Registration", to: "/newReg/studReg" },
-            { title: "Classes", to: "/newReg/studentList" },
+            { title: "Student List", to: "/newReg/studentList" },
             { title: "Staffs", to: "/teachers/teachersList" },
-            { title: "Parents", to: "/parent/parentList" },
-            { title: "Attendance", to: "/attendance/AttendanceMain" },
+            { title: "Parents List", to: "/parent/parentList" },
+            { title: "Bills", to: "/bill/bill_Main" },
           ]}
         />
         
         <DropdownMenu
-          title="Administration"
+          title="Teacher"
           currentPath={location.pathname}
           items={[
-            { title: "Bills", to: "/bill/bill_Main" },
+            { title: "Attendance", to: "/attendance/AttendanceMain" },
             { title: "Report", to: "/report/create_report" },
           ]}
         />

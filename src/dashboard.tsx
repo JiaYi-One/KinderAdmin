@@ -7,19 +7,19 @@ type Section = { title: string; tiles: Tile[] };
 function Dashboard() {
   const sections: Section[] = [
     {
-      title: "Academic Management",
+      title: "Admin Management",
       tiles: [
         { title: "Registration", description: "Register new student ", to: "/newReg/studReg" },
-        { title: "Classes", description: "Student list by class", to: "/newReg/studentList" },
+        { title: "Student List", description: "Student list by class", to: "/newReg/studentList" },
         { title: "Staffs", description: "View/manage teachers", to: "/teachers/teachersList" },
-        { title: "Parents ", description: "View/manage parent ", to: "/parent/parentList" },
-        { title: "Attendance", description: "Take and review attendance", to: "/attendance/AttendanceMain" },
+        { title: "Parents List", description: "View/manage parent ", to: "/parent/parentList" },
+        { title: "Bills", description: "Create and manage bills (fees/tuition)", to: "/bill/bill_Main" },
       ],
     },
     {
-      title: "Administration & Finance",
+      title: "Teacher",
       tiles: [
-        { title: "Bills", description: "Create and manage bills (fees/tuition)", to: "/bill/bill_Main" },
+        { title: "Attendance", description: "Take and review attendance", to: "/attendance/AttendanceMain" },
         { title: "Report", description: "Create school reports (finance/academic summaries)", to: "/report/create_report" },
       ],
     },

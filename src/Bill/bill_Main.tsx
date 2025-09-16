@@ -25,7 +25,7 @@ function BillMain() {
                 onClick={() => setActiveTab("list")}
                 style={{ color: activeTab === "list" ? '#000000' : '#000000' }}
               >
-                Bill List
+                Create Bill
               </button>
             </li>
             <li className="nav-item">
@@ -34,12 +34,12 @@ function BillMain() {
                 onClick={() => setActiveTab("create")}
                 style={{ color: activeTab === "create" ? '#000000' : '#000000' }}
               >
-                Create Bill
+                Bill List
               </button>
             </li>
           </ul>
 
-          {activeTab === "list" ? <BillList /> : <CreateBill />}
+          {activeTab === "list" ?   <CreateBill />:<BillList />}
         </main>
       </div>
     </div>

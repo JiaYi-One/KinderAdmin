@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
-import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, getDoc, serverTimestamp } from "firebase/firestore";
-import { getAuth, createUserWithEmailAndPassword, updatePassword, deleteUser } from "firebase/auth";
+import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, serverTimestamp } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { Plus, X } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
@@ -42,10 +42,7 @@ function TeachersList() {
   const [selectedRole, setSelectedRole] = useState<'teacher' | 'admin'>('teacher');
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
-  const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
+  
   const [subjectTemplates, setSubjectTemplates] = useState<SubjectTemplate[]>([]);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [newSubject, setNewSubject] = useState("");
@@ -434,70 +431,7 @@ function TeachersList() {
     });
   };
 
-  const handleUpdatePassword = async () => {
-    try {
-      setPasswordError("");
-      
-      if (!newPassword || !confirmPassword) {
-        setPasswordError("Please fill in all fields");
-        return;
-      }
-
-      if (newPassword !== confirmPassword) {
-        setPasswordError("Passwords do not match");
-        return;
-      }
-
-      if (newPassword.length < 6) {
-        setPasswordError("Password must be at least 6 characters long");
-        return;
-      }
-
-      const staffRef = doc(db, "staff", editedTeacher!.teacherName);
-      const staffDoc = await getDoc(staffRef);
-      
-      if (!staffDoc.exists()) {
-        setPasswordError("Staff not found");
-        return;
-      }
-
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        setPasswordError("No authenticated user found");
-        return;
-      }
-
-      // Update password for the current user
-      await updatePassword(currentUser, newPassword);
-      
-      // Update the password in Firestore
-      await updateDoc(staffRef, {
-        password: newPassword,
-        updatedAt: serverTimestamp()
-      });
-
-      setShowPasswordUpdate(false);
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordError("");
-      
-      // Show success message
-      alert("Password updated successfully!");
-    } catch (error) {
-      console.error("Error updating password:", error);
-      if (error instanceof Error) {
-        if (error.message.includes('auth/requires-recent-login')) {
-          setPasswordError("For security reasons, please log out and log in again before changing the password.");
-        } else {
-          setPasswordError(error.message);
-        }
-      } else {
-        setPasswordError("Failed to update password. Please try again.");
-      }
-    }
-  };
+  
 
  
 
@@ -808,15 +742,7 @@ function TeachersList() {
                       </>
                     ) : (
                       <>
-                        {!isAddMode && (
-                          <button
-                            type="button"
-                            className="btn btn-outline-primary me-2"
-                            onClick={() => setShowPasswordUpdate(true)}
-                          >
-                            Change Password
-                          </button>
-                        )}
+                        
                         <button
                           type="button"
                           className="btn btn-primary me-2"
@@ -892,73 +818,7 @@ function TeachersList() {
             </div>
           )}
 
-          {/* Password Update Modal */}
-          {showPasswordUpdate && (
-            <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
-              <div className="modal-dialog modal-dialog-centered">
-                <div className="modal-content">
-                  <div className="modal-header">
-                    <h5 className="modal-title">Change Password</h5>
-                    <button
-                      type="button"
-                      className="btn-close"
-                      onClick={() => {
-                        setShowPasswordUpdate(false);
-                        setNewPassword("");
-                        setConfirmPassword("");
-                        setPasswordError("");
-                      }}
-                    ></button>
-                  </div>
-                  <div className="modal-body">
-                    {passwordError && <div className="alert alert-danger">{passwordError}</div>}
-                    <div className="mb-3">
-                      <label className="form-label">New Password</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                      />
-                      <div className="form-text">Password must be at least 6 characters long</div>
-                    </div>
-                    <div className="mb-3">
-                      <label className="form-label">Confirm New Password</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
-                      />
-                    </div>
-                  </div>
-                  <div className="modal-footer">
-                    <button
-                      type="button"
-                      className="btn btn-secondary me-2"
-                      onClick={() => {
-                        setShowPasswordUpdate(false);
-                        setNewPassword("");
-                        setConfirmPassword("");
-                        setPasswordError("");
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={handleUpdatePassword}
-                    >
-                      Update Password
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          
 
           {/* Subject Saved Notification */}
           {showSubjectSaved && (
@@ -977,7 +837,7 @@ function TeachersList() {
               <div className="modal-dialog modal-lg">
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Manage Subject Templates</h5>
+                    <h5 className="modal-title">Subject Management</h5>
                     <button
                       type="button"
                       className="btn-close"

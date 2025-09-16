@@ -54,6 +54,13 @@ interface StudentData {
   grade?: string;
 }
 
+// Student shape returned by AttendanceDataService.fetchClassAttendance
+type AttendanceStudent = {
+  id: string;
+  status: string;
+  reason?: string;
+};
+
 interface WeeklyAttendanceData {
   [date: string]: {
     status: string;
@@ -213,11 +220,11 @@ const ManageStudentAttendance: React.FC = () => {
         for (const date of weekDates) {
           try {
             const result = await AttendanceDataService.fetchClassAttendance(selectedManageClass, date);
-            const studentAttendance = result.students.find(s => s.id === selectedStudent);
+            const studentAttendance = (result.students as AttendanceStudent[]).find(s => s.id === selectedStudent);
             if (studentAttendance) {
               weeklyData[date] = {
                 status: studentAttendance.status,
-                note: ''
+                note: studentAttendance.reason || ''
               };
               if (studentAttendance.status === 'present') presentDays++;
               else if (studentAttendance.status === 'absent') absentDays++;
@@ -275,7 +282,7 @@ const ManageStudentAttendance: React.FC = () => {
         <div className="bg-white rounded shadow p-4">
           <div className="d-flex align-items-center mb-4">
             <Typography variant="h5" fontWeight="bold" gutterBottom style={{ margin: 0 }}>
-              Manage Student Attendance
+              Student Attendance
             </Typography>
           </div>
           {/* Class Selection Dropdown styled like parentList.tsx */}
@@ -397,6 +404,7 @@ const ManageStudentAttendance: React.FC = () => {
                                         <Typography variant="subtitle2" fontWeight="bold">{dayName}</Typography>
                                         <Typography variant="caption" color="text.secondary">{formattedDate}</Typography>
                                       </div>
+                                      
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         {getWeeklyStatusIcon(dayData?.status || 'not marked')}
                                         <Chip 
@@ -405,7 +413,15 @@ const ManageStudentAttendance: React.FC = () => {
                                           size="small"
                                         />
                                       </div>
+                                      
                                     </div>
+                                    {(dayData?.status === 'absent' || dayData?.status === 'on leave') && dayData?.note && (
+                                        <div>
+                                          <Typography variant="caption" color="text.secondary" style={{ fontStyle: 'italic' }}>
+                                            Reason: {dayData.note}
+                                          </Typography>
+                                        </div>
+                                      )}
                                   </CardContent>
                                 </Card>
                               </div>

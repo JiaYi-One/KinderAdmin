@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { runDueDateReminders } from "./checkDueDateReminders";
 import { db } from "../firebase";
-import { collection, getDocs, doc, updateDoc, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { Receipt, Search, Filter, CheckCircle, XCircle, Clock } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -25,6 +25,7 @@ interface Bill {
   totalAmount: number;
   paymentStatus: string;
   createdAt: Date;
+  approvedOn?: unknown;
 }
 
 function BillList() {
@@ -85,18 +86,30 @@ function BillList() {
     setIsUpdating(true);
     try {
       const billRef = doc(db, "bills", billId);
-      await updateDoc(billRef, {
-        paymentStatus: newStatus
-      });
+      const updatePayload: { paymentStatus: string; approvedOn?: ReturnType<typeof serverTimestamp> } = { paymentStatus: newStatus };
+      if (newStatus === "paid") {
+        updatePayload.approvedOn = serverTimestamp();
+      }
+      await updateDoc(billRef, updatePayload);
 
       // Update local state
       setBills(prev => prev.map(bill => 
-        bill.id === billId ? { ...bill, paymentStatus: newStatus } : bill
+        bill.id === billId 
+          ? { 
+              ...bill, 
+              paymentStatus: newStatus,
+              approvedOn: newStatus === "paid" ? new Date() : bill.approvedOn
+            } 
+          : bill
       ));
 
       // Update selected bill if it's the one being updated
       if (selectedBill && selectedBill.id === billId) {
-        setSelectedBill(prev => prev ? { ...prev, paymentStatus: newStatus } : null);
+        setSelectedBill(prev => prev ? { 
+          ...prev, 
+          paymentStatus: newStatus,
+          approvedOn: newStatus === "paid" ? new Date() : prev.approvedOn
+        } : null);
       }
     } catch (error) {
       console.error("Error updating bill status:", error);
@@ -447,25 +460,27 @@ function BillList() {
 
                     <h6>Bill Items:</h6>
                     <div className="table-responsive">
-                      <table className="table table-sm">
-                        <thead>
+                      <table className="table table-bordered mb-4">
+                        <thead className="table-light">
                           <tr>
+                            <th style={{ width: "60px" }}>No</th>
                             <th>Description</th>
-                            <th className="text-end">Amount (RM)</th>
+                            <th style={{ width: "200px" }} className="text-end">Amount (RM)</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedBill.items.map((item) => (
+                          {selectedBill.items.map((item, index) => (
                             <tr key={item.id}>
+                              <td className="text-center">{index + 1}</td>
                               <td>{item.description}</td>
-                              <td className="text-end">{item.amount.toFixed(2)}</td>
+                              <td className="text-end">{Number(item.amount).toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr className="fw-bold">
-                            <td>Total Amount:</td>
-                            <td className="text-end text-success">RM {selectedBill.totalAmount.toFixed(2)}</td>
+                            <td colSpan={2}>Total Amount:</td>
+                            <td className="text-end">RM {Number(selectedBill.totalAmount).toFixed(2)}</td>
                           </tr>
                         </tfoot>
                       </table>

@@ -371,7 +371,7 @@ export default function Dashboard() {
                 <Typography variant="h6">Take Attendance</Typography>
               </div>
               <Typography variant="body2" color="text.secondary">
-                Mark attendance with pre-notified absences
+                Mark attendance 
               </Typography>
             </Link>
           </div>
@@ -422,10 +422,10 @@ export default function Dashboard() {
             <Link to="/attendance/manageStudAttendance" style={{ textDecoration: "none", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
                 <ManageAccountsIcon style={{ color: "#9c27b0" }} />
-                <Typography variant="h6">Manage Student Attendance</Typography>
+                <Typography variant="h6">View Student Attendance</Typography>
               </div>
               <Typography variant="body2" color="text.secondary">
-                View and manage student attendance by class and week
+                View student attendance by class and week
               </Typography>
             </Link>
           </div>
