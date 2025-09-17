@@ -1227,7 +1227,7 @@ export default function KindergartenReportSystem() {
           <main className="bg-white rounded shadow p-5">
             <div className="mb-4 d-flex align-items-center justify-content-between">
               <div>
-                <h2 className="h3 fw-bold">Kindergarten Report System</h2>
+                <h2 className="h3 fw-bold"> Report System</h2>
                 <p className="text-muted mt-1">
                   Create, edit, and manage student reports with specialized forms for different report types
                 </p>

@@ -858,7 +858,7 @@ export default function AnnouncementsPage() {
     const colors: { [key: string]: "error" | "primary" | "success" | "default" } = {
       Important: "error",
       Event: "primary",
-      "Field Trip": "success",
+      
       General: "default",
     }
     return colors[category] || "default"
@@ -1024,7 +1024,6 @@ export default function AnnouncementsPage() {
                 >
                   <MenuItem value="Important">Important</MenuItem>
                   <MenuItem value="Event">Event</MenuItem>
-                  <MenuItem value="Field Trip">Field Trip</MenuItem>
                   <MenuItem value="General">General</MenuItem>
                 </Select>
               </FormControl>
@@ -1146,7 +1145,6 @@ export default function AnnouncementsPage() {
                 >
                   <MenuItem value="Important">Important</MenuItem>
                   <MenuItem value="Event">Event</MenuItem>
-                  <MenuItem value="Field Trip">Field Trip</MenuItem>
                   <MenuItem value="General">General</MenuItem>
                 </Select>
               </FormControl>
