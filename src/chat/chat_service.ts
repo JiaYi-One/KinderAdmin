@@ -1,4 +1,4 @@
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc, where, getDocs, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, Timestamp, updateDoc, doc, where, getDocs, getDoc, deleteDoc, limit } from 'firebase/firestore';
 import { db } from '../firebase';
 import { sendPushNotification as sendPushy } from '../notifications/pushyClient';
 import { getAuth } from 'firebase/auth';
@@ -95,7 +95,7 @@ export class ChatService {
         }
     ) {
         try {
-            const teacherId = await this.getCurrentTeacherId();
+            const teacherId = await ChatService.getCurrentTeacherId();
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
                 ...message,
@@ -131,7 +131,7 @@ export class ChatService {
                 await sendPushy(db, {
                     parentId: chatData.parentId,
                     type: 'chat',
-                    title: `New message from ${message.teacherName}`, // Use teacher name from message
+                    title: `New Message From ${message.teacherName}`, // Use teacher name from message
                     message: message.content,
                     entityId: chatId,
                     // Provide structured fields so mobile can render proper names
@@ -209,7 +209,7 @@ export class ChatService {
         }
     ) {
         try {
-            const teacherId = await this.getCurrentTeacherId();
+            const teacherId = await ChatService.getCurrentTeacherId();
             const chatRef = collection(db, 'chats', chatId, 'messages');
             const messageDoc = await addDoc(chatRef, {
                 ...fileMessage,
@@ -245,7 +245,7 @@ export class ChatService {
                 await sendPushy(db, {
                     parentId: chatData.parentId,
                     type: 'chat',
-                    title: `New file from ${fileMessage.teacherName}`,
+                    title: `New Message From ${fileMessage.teacherName}`,
                     message: `📎 ${fileMessage.fileName}`,
                     entityId: chatId,
                     teacherName: fileMessage.teacherName,
@@ -283,8 +283,8 @@ export class ChatService {
     // Create a new chat (legacy method for teacher side)
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
-            const teacherId = await this.getCurrentTeacherId();
-            const teacherName = await this.getCurrentTeacherName();
+            const teacherId = await ChatService.getCurrentTeacherId();
+            const teacherName = await ChatService.getCurrentTeacherName();
             const chatRef = collection(db, 'chats');
             const chatDoc = await addDoc(chatRef, {
                 parentId,
@@ -401,5 +401,128 @@ export class ChatService {
         }
     }
 
+    // Delete a message
+    static async deleteMessage(chatId: string, messageId: string) {
+        try {
+            const currentTeacherId = await ChatService.getCurrentTeacherId();
+
+            // Get the message to verify ownership
+            const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+            const messageDoc = await getDoc(messageRef);
+
+            if (!messageDoc.exists()) {
+                throw new Error('Message not found');
+            }
+
+            const messageData = messageDoc.data();
+            if (messageData.webUser !== currentTeacherId) {
+                throw new Error('You can only delete your own messages');
+            }
+
+            // Delete the message
+            await deleteDoc(messageRef);
+
+            // Check if this was the last message and update chat document accordingly
+            const messagesRef = collection(db, 'chats', chatId, 'messages');
+            const lastMessageQuery = query(messagesRef, orderBy('timestamp', 'desc'), limit(1));
+            const lastMessageSnapshot = await getDocs(lastMessageQuery);
+
+            const chatDocRef = doc(db, 'chats', chatId);
+
+            if (!lastMessageSnapshot.empty) {
+                // Update with the new last message
+                const lastMessage = lastMessageSnapshot.docs[0].data();
+                await updateDoc(chatDocRef, {
+                    lastMessage: lastMessage.content,
+                    lastMessageTime: lastMessage.timestamp,
+                    lastMessageSender: lastMessage.sender,
+                    lastMessageType: lastMessage.type || 'text',
+                });
+            } else {
+                // No messages left, reset to default
+                const teacherName = await ChatService.getCurrentTeacherName();
+                await updateDoc(chatDocRef, {
+                    lastMessage: 'Chat started',
+                    lastMessageTime: serverTimestamp(),
+                    lastMessageSender: teacherName,
+                    lastMessageType: 'text',
+                });
+            }
+        } catch (error) {
+            console.error('Error deleting message:', error);
+            throw error;
+        }
+    }
+
+    // Send a video message
+    static async sendVideoMessage(
+        chatId: string,
+        videoMessage: {
+            content: string; // Video URL
+            fileName: string;
+            fileSize: number;
+            fileType: string;
+            sender: string;
+            studentName: string;
+            parentName: string;
+            webUser: string;
+            teacherName: string;
+            type: string; // 'video'
+        }
+    ) {
+        try {
+            const teacherId = await ChatService.getCurrentTeacherId();
+            const chatRef = collection(db, 'chats', chatId, 'messages');
+            const messageDoc = await addDoc(chatRef, {
+                ...videoMessage,
+                sender: videoMessage.teacherName,
+                webUser: teacherId,
+                timestamp: serverTimestamp(),
+                isRead: false,
+            });
+
+            // Get current chat data to properly handle unread counts
+            const chatDocRef = doc(db, 'chats', chatId);
+            const chatDoc = await getDoc(chatDocRef);
+            const chatData = chatDoc.exists() ? chatDoc.data() : {};
+
+            // Increment unread count for mobile user (parent) when web user sends message
+            const currentMobileUnread = chatData.unreadMobile || 0;
+            const newMobileUnread = currentMobileUnread + 1;
+
+            // Update the chat document with the latest message info and unread count
+            await updateDoc(chatDocRef, {
+                lastMessage: `🎥 ${videoMessage.fileName}`,
+                lastMessageTime: serverTimestamp(),
+                lastMessageSender: videoMessage.teacherName,
+                lastMessageType: videoMessage.type,
+                webUser: teacherId,
+                unreadMobile: newMobileUnread,
+                unreadWeb: 0,
+                teacherName: videoMessage.teacherName,
+            });
+
+            // Send push notification to parent via Pushy helper
+            if (chatData.parentId) {
+                await sendPushy(db, {
+                    parentId: chatData.parentId,
+                    type: 'chat',
+                    title: `New Message From ${videoMessage.teacherName}`,
+                    message: `🎥 ${videoMessage.fileName}`,
+                    entityId: chatId,
+                    teacherName: videoMessage.teacherName,
+                    studentName: videoMessage.studentName,
+                    parentName: videoMessage.parentName,
+                    content: `🎥 ${videoMessage.fileName}`,
+                });
+            }
+
+            return messageDoc.id;
+        } catch (error) {
+            console.error('Error sending video message:', error);
+            throw error;
+        }
+    }
+
     // (Push notifications now use pushyClient.ts via sendPushNotification)
-} 
+}

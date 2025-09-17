@@ -267,7 +267,7 @@ const ManageStudentAttendance: React.FC = () => {
 
   return (
     <div>
-      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px" }}>
+      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px", display: 'flex', gap: 8 }}>
         <Button
           component={Link}
           to="/attendance/AttendanceMain"
@@ -276,6 +276,14 @@ const ManageStudentAttendance: React.FC = () => {
           startIcon={<ArrowBackIcon />}
         >
           Back
+        </Button>
+        <Button
+          component={Link}
+          to="/attendance/stud_onleave"
+          variant="contained"
+          size="small"
+        >
+          Weekly On Leave
         </Button>
       </div>
       <div className="container py-4">

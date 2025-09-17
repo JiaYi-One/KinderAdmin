@@ -328,20 +328,66 @@ export function NewChatSelector({
     <div>
       {/* Class list */}
       {!selectedClass && (
-        <div>
-          <button className="btn btn-link mb-2 px-0" onClick={onClose}>
-            &larr; Back to Chat List
-          </button>
-          <div className="mb-2 fw-bold">Select Class</div>
-          <div className="d-flex flex-column gap-2">
+        <div className="p-4">
+          <div className="d-flex align-items-center mb-4">
+            <button 
+              className="btn btn-link p-0 me-3 d-flex align-items-center text-decoration-none" 
+              onClick={onClose}
+              style={{ color: '#6c757d' }}
+            >
+              <i className="bi bi-arrow-left me-2"></i>
+              <span>Back to Chat List</span>
+            </button>
+          </div>
+          
+          <div className="text-center mb-4">
+            <h4 className="mb-2" style={{ color: '#212529', fontWeight: '600' }}>Select Class</h4>
+            <p className="text-muted mb-0">Choose a class to start a conversation with parents</p>
+          </div>
+
+          <div className="row g-3">
             {classes.map((cls) => (
-              <button
-                key={cls}
-                className="btn btn-outline-primary text-start"
-                onClick={() => setSelectedClass(cls)}
-              >
-                {cls}
-              </button>
+              <div key={cls} className="col-12">
+                <button
+                  className="btn w-100 text-start p-3 border-0 rounded-3 shadow-sm"
+                  onClick={() => setSelectedClass(cls)}
+                  style={{
+                    backgroundColor: '#f8f9fa',
+                    border: '2px solid #e9ecef',
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
+                    e.currentTarget.style.borderColor = '#007bff';
+                    e.currentTarget.style.backgroundColor = '#e3f2fd';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+                    e.currentTarget.style.borderColor = '#e9ecef';
+                    e.currentTarget.style.backgroundColor = '#f8f9fa';
+                  }}
+                >
+                  <div className="d-flex align-items-center">
+                    <div className="flex-grow-1">
+                      <div 
+                        className="fw-bold mb-1"
+                        style={{ fontSize: '18px', color: '#495057' }}
+                      >
+                        Class {cls}
+                      </div>
+                    
+                    </div>
+                    <i 
+                      className="bi bi-chevron-right"
+                      style={{ fontSize: '16px', color: '#6c757d' }}
+                    ></i>
+                  </div>
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -349,20 +395,65 @@ export function NewChatSelector({
 
       {/* Student list */}
       {selectedClass && (
-        <div>
-          <button className="btn btn-link px-0 mb-2" onClick={() => setSelectedClass("")}>
-            &larr; Back to Class List
-          </button>
-          <div className="mb-2 fw-bold">Select Student</div>
-          <div className="d-flex flex-column gap-2">
+        <div className="p-4">
+          <div className="d-flex align-items-center mb-4">
+            <button 
+              className="btn btn-link p-0 me-3 d-flex align-items-center text-decoration-none" 
+              onClick={() => setSelectedClass("")}
+              style={{ color: '#6c757d' }}
+            >
+              <i className="bi bi-arrow-left me-2"></i>
+              <span>Back to Class List</span>
+            </button>
+          </div>
+          
+          <div className="text-center mb-4">
+            <h4 className="mb-2" style={{ color: '#212529', fontWeight: '600' }}>Select Student</h4>
+            <p className="text-muted mb-0">Choose a student to start a conversation with their parent</p>
+          </div>
+
+          <div className="row g-3">
             {students.map((student) => (
-              <button
-                key={student.id}
-                className="btn btn-outline-secondary text-start"
-                onClick={() => handleStartChat(student.parentId, student.name, student.parentName)}
-              >
-                {student.name} ({student.parentName})
-              </button>
+              <div key={student.id} className="col-12">
+                <button
+                  className="btn w-100 text-start p-3 border-0 rounded-3 shadow-sm"
+                  onClick={() => handleStartChat(student.parentId, student.name, student.parentName)}
+                  style={{
+                    backgroundColor: '#f8f9fa',
+                    border: '2px solid #e9ecef',
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
+                    e.currentTarget.style.borderColor = '#007bff';
+                    e.currentTarget.style.backgroundColor = '#e3f2fd';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+                    e.currentTarget.style.borderColor = '#e9ecef';
+                    e.currentTarget.style.backgroundColor = '#f8f9fa';
+                  }}
+                >
+                  <div className="d-flex align-items-center">
+                    <div className="flex-grow-1">
+                      <div 
+                        className="fw-bold mb-1"
+                        style={{ fontSize: '18px', color: '#495057' }}
+                      >
+                        {student.name}
+                      </div>
+                      <small className="text-muted">
+                        Parent: {student.parentName}
+                      </small>
+                    </div>
+                   
+                  </div>
+                </button>
+              </div>
             ))}
           </div>
         </div>

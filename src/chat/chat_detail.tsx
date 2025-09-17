@@ -12,7 +12,9 @@ export function ChatDetail() {
   const [loadingImages, setLoadingImages] = useState<Set<string>>(new Set())
   const [, setProcessedMessages] = useState<Set<string>>(new Set()) // Used to track which messages we've already processed for loading states
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
+  const [fullScreenVideo, setFullScreenVideo] = useState<{url: string, fileName: string} | null>(null)
   const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const lastSentContentRef = useRef<string>("")
   const lastSentAtRef = useRef<number>(0)
   const inFlightContentRef = useRef<string>("")
@@ -66,7 +68,7 @@ export function ChatDetail() {
           if (!selected) return
           const siblings = chats.filter(c => c.parentId === selected.parentId && c.id !== id)
           for (const s of siblings) {
-            try { await ChatService.markChatAsRead(s.id) } catch {}
+            try { await ChatService.markChatAsRead(s.id) } catch { /* empty */ }
           }
           // unsubscribe after one run
           unsubscribeOnce()
@@ -128,17 +130,39 @@ export function ChatDetail() {
     })
   }, [id])
 
-  // Handle ESC key for closing full-screen image
+  // Handle ESC key for closing full-screen image/video and menus
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && fullScreenImage) {
-        setFullScreenImage(null);
+      if (event.key === 'Escape') {
+        if (fullScreenImage) {
+          setFullScreenImage(null);
+        } else if (fullScreenVideo) {
+          setFullScreenVideo(null);
+        } else if (openMenuId) {
+          setOpenMenuId(null);
+        }
       }
     };
 
     document.addEventListener('keydown', handleEscKey);
     return () => document.removeEventListener('keydown', handleEscKey);
-  }, [fullScreenImage]);
+  }, [fullScreenImage, fullScreenVideo, openMenuId]);
+
+  // Handle clicking anywhere to close menu
+  useEffect(() => {
+    const handleClickAnywhere = (event: MouseEvent) => {
+      if (openMenuId) {
+        const target = event.target as Element;
+        // Only close if not clicking on the delete button itself
+        if (!target.closest('.floating-delete-btn')) {
+          setOpenMenuId(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickAnywhere);
+    return () => document.removeEventListener('mousedown', handleClickAnywhere);
+  }, [openMenuId]);
 
   useEffect(() => {
     if (!id) return
@@ -213,16 +237,32 @@ export function ChatDetail() {
   const handleFileUpload = async (fileUrl: string, fileName: string, fileSize: number, fileType: string) => {
     if (!id) return
 
+    console.log('handleFileUpload called with:', { fileUrl, fileName, fileSize, fileType })
+
     try {
       setIsUploadingFile(true)
       
-      // Only handle image uploads
-      if (!fileType.startsWith('image/')) {
-        alert('Only image files are allowed in chat.');
+      // Handle both image and video uploads
+      if (!fileType.startsWith('image/') && !fileType.startsWith('video/')) {
+        alert('Only image and video files are allowed in chat.');
         return;
       }
 
-      await ChatService.sendFileMessage(id, {
+      const messageType = fileType.startsWith('video/') ? 'video' : 'image';
+      
+      const serviceMethod = fileType.startsWith('video/') ? ChatService.sendVideoMessage : ChatService.sendFileMessage;
+
+      console.log('Sending message with type:', messageType)
+      console.log('Chat info:', chatInfo)
+
+      // Check if chat info is available
+      if (!chatInfo.teacherName || !chatInfo.studentName || !chatInfo.parentName) {
+        console.error('Missing chat info:', chatInfo);
+        alert('Chat information not available. Please refresh the page and try again.');
+        return;
+      }
+
+      await serviceMethod(id, {
         content: fileUrl,
         fileName: fileName,
         fileSize: fileSize,
@@ -232,18 +272,43 @@ export function ChatDetail() {
         parentName: chatInfo.parentName,
         webUser: chatInfo.webUser,
         teacherName: chatInfo.teacherName,
-        type: 'image',
+        type: messageType,
       })
 
+      console.log('File message sent successfully')
       // Scroll to bottom after sending file
       requestAnimationFrame(() => scrollToBottomImmediate())
     } catch (error) {
       console.error("Error sending file message:", error)
-      alert('Failed to send image. Please try again.')
+      console.error("Error details:", {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      alert(`Failed to send file: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsUploadingFile(false)
     }
   }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!id) return;
+
+    const confirmed = window.confirm('Are you sure you want to delete this message? This action cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      await ChatService.deleteMessage(id, messageId);
+      setOpenMenuId(null);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      alert('Failed to delete message. Please try again.');
+    }
+  };
+
+  const handleMenuToggle = (messageId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenMenuId(openMenuId === messageId ? null : messageId);
+  };
 
   if (!id) {
     return (
@@ -286,7 +351,7 @@ export function ChatDetail() {
               return (
                 <div
                   key={message.id}
-                  className={`d-flex mb-3 ${isWebUser ? 'justify-content-end' : 'justify-content-start'}`}
+                  className={`d-flex mb-3 ${isWebUser ? 'justify-content-end' : 'justify-content-start'} position-relative message-menu-container`}
                 >
                   {!isWebUser && (
                     <div className="me-2 flex-shrink-0">
@@ -295,13 +360,28 @@ export function ChatDetail() {
                       </div>
                     </div>
                   )}
+                  
                   <div
-                    className={`p-3 rounded-3 ${isWebUser ? 'bg-primary text-white' : 'bg-light'}`}
+                    className={`p-3 rounded-3 ${isWebUser ? 'bg-primary text-white' : 'bg-light'} position-relative`}
                     style={{ maxWidth: '70%' }}
                   >
                     {/* Show sender name for all messages */}
-                    <div className="d-flex align-items-center mb-1">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
                       <small className={`${isWebUser ? 'text-white-50' : 'text-muted'}`}>{displayName}</small>
+                      
+                      {/* Menu button - always show for web user messages */}
+                      {isWebUser && (
+                        <div className="message-menu-button-inline">
+                          <button
+                            className="btn btn-sm btn-outline-secondary message-menu-toggle"
+                            onClick={(e) => handleMenuToggle(message.id, e)}
+                            title="Message options"
+                          >
+                            <i className="bi bi-three-dots-vertical"></i>
+                          </button>
+                        </div>
+                      )}
+                      
                     </div>
                     
                     {/* Display image or text based on message type */}
@@ -355,6 +435,39 @@ export function ChatDetail() {
                           title="Click to view full size"
                         />
                      
+                      </div>
+                    ) : message.type === 'video' ? (
+                      <div className="chat-video-container">
+                        <div 
+                          className="video-thumbnail"
+                          onClick={() => {
+                            setFullScreenVideo({
+                              url: message.content,
+                              fileName: message.fileName || ''
+                            });
+                          }}
+                          style={{
+                            position: 'relative',
+                            cursor: 'pointer',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            backgroundColor: '#f8f9fa',
+                            border: '1px solid #dee2e6',
+                            minHeight: '200px',
+                            minWidth: '200px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundImage: `url(${message.content})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat'
+                          }}
+                        >
+                          <div className="video-overlay">
+                            <i className="bi bi-play-circle" style={{ fontSize: '3rem', color: 'white' }}></i>
+                          </div>
+                        </div>
                       </div>
                     ) : message.type === 'pdf' ? (
                       <div className="chat-file-container">
@@ -431,6 +544,23 @@ export function ChatDetail() {
                       </div>
                     </div>
                   )}
+                  
+                  {/* Floating delete button - only show when menu is clicked */}
+                  {isWebUser && openMenuId === message.id && (
+                    <div className="floating-delete-button">
+                      <button
+                        className="btn btn-sm btn-danger floating-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteMessage(message.id);
+                        }}
+                        title="Delete message"
+                      >
+                        <i className="bi bi-trash me-1"></i>
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -456,8 +586,9 @@ export function ChatDetail() {
           />
                      <FileUpload 
              onFileUpload={handleFileUpload}
-             acceptedTypes={['.png', '.jpg', '.jpeg']}
-             maxSize={5}
+             acceptedTypes={['.png', '.jpg', '.jpeg', '.mp4', '.mov', '.avi', '.webm']}
+             maxSize={50}
+             allowVideos={true}
              className="flex-shrink-0"
              disabled={isUploadingFile}
            />
@@ -492,6 +623,48 @@ export function ChatDetail() {
           </div>
         </div>
       )}
+
+      {/* Full-screen video modal */}
+      {fullScreenVideo && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center fullscreen-video-modal"
+          style={{ 
+            backgroundColor: 'rgba(0, 0, 0, 0.9)', 
+            zIndex: 1050 
+          }}
+          onClick={() => setFullScreenVideo(null)}
+        >
+          <div className="position-relative w-100 h-100 d-flex flex-column">
+            {/* Header */}
+            <div className="d-flex justify-content-between align-items-center p-3 text-white">
+              <h5 className="mb-0">{fullScreenVideo.fileName}</h5>
+              <button
+                className="btn-close btn-close-white"
+                onClick={() => setFullScreenVideo(null)}
+                style={{ zIndex: 1051 }}
+              />
+            </div>
+            
+            {/* Video Player */}
+            <div className="flex-grow-1 d-flex align-items-center justify-content-center p-3">
+              <video
+                src={fullScreenVideo.url}
+                controls
+                autoPlay
+                style={{ 
+                  maxHeight: '80vh', 
+                  maxWidth: '90vw',
+                  borderRadius: '8px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

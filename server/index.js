@@ -38,12 +38,19 @@ app.post('/pushy', async (req, res) => {
     try {
         // Compute a title (use provided title first, then fallback by type)
         const computedTitle = title || ({
-            new_bill: 'New Bill Available',
+            new_bill: 'New Bill Availableee',
             announcement: 'New Announcement',
             report: 'New Report',
-            chat: 'New Message',
+            chat: teacherName ? `New Message From ${teacherName}` : 'New Message',
             reminder: 'Payment Reminder',
         }[type] || 'KinderCare');
+
+        console.log('🔔 Notification title computation:', {
+            providedTitle: title,
+            type: type,
+            teacherName: teacherName,
+            computedTitle: computedTitle
+        });
 
         // Send notifications
         const results = await Promise.allSettled(
@@ -51,35 +58,49 @@ app.post('/pushy', async (req, res) => {
                 try {
                     console.log(`📤 Sending notification to token: ${token.substring(0, 20)}...`);
 
+                    const pushyPayload = {
+                        to: token,
+                        data: {
+                            type: type || 'generic',
+                            parentId: parentId,
+                            billCount: billCount || 1,
+                            totalAmount: totalAmount || 0,
+                            message: message || 'You have a new notification',
+                            entityId: entityId || null,
+                            title: computedTitle, // Include title in data payload for mobile handling
+                            // Duplicate chatId for chat payloads to improve compatibility on clients
+                            ...(type === 'chat' && entityId
+                                ? { chatId: entityId }
+                                : {}),
+                            // For chat notifications, include structured metadata consumed by mobile
+                            ...(type === 'chat' ? {
+                                teacherName: teacherName,
+                                studentName: studentName,
+                                parentName: parentName,
+                                content: message,
+                            } : {}),
+                        },
+                        notification: {
+                            title: computedTitle,
+                            body: message || 'You have a new notification',
+                            sound: 'default',
+                            badge: 1,
+                            icon: 'ic_notification',
+                            color: '#FF6B6B',
+                        },
+                    };
+
+                    console.log('📤 Pushy payload being sent:', {
+                        to: token.substring(0, 20) + '...',
+                        notificationTitle: pushyPayload.notification.title,
+                        dataTitle: pushyPayload.data.title,
+                        type: type,
+                        fullNotificationPayload: pushyPayload.notification
+                    });
+
                     const response = await axios.post(
                         `https://api.pushy.me/push?api_key=${PUSHY_API_KEY}`,
-                        {
-                            to: token,
-                            data: {
-                                type: type || 'generic',
-                                parentId: parentId,
-                                billCount: billCount || 1,
-                                totalAmount: totalAmount || 0,
-                                message: message || 'You have a new notification',
-                                entityId: entityId || null,
-                                title: computedTitle, // Include title in data payload for mobile handling
-                                // Duplicate chatId for chat payloads to improve compatibility on clients
-                                ...(type === 'chat' && entityId
-                                    ? { chatId: entityId }
-                                    : {}),
-                                // For chat notifications, include structured metadata consumed by mobile
-                                ...(type === 'chat' ? {
-                                    teacherName: teacherName,
-                                    studentName: studentName,
-                                    parentName: parentName,
-                                    content: message,
-                                } : {}),
-                            },
-                            notification: {
-                                title: computedTitle,
-                                body: message || 'You have a new notification',
-                            },
-                        },
+                        pushyPayload,
                         {
                             timeout: 10000,
                             headers: { 'Content-Type': 'application/json' },

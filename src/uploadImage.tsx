@@ -6,6 +6,7 @@ interface FileUploadProps {
   maxSize?: number; // in MB
   className?: string;
   disabled?: boolean;
+  allowVideos?: boolean; // New prop to enable video support
 }
 
 function FileUpload({ 
@@ -13,7 +14,8 @@ function FileUpload({
   acceptedTypes = ['.png', '.jpg', '.jpeg', '.gif', '.webp'], 
   maxSize = 5,
   className = "",
-  disabled = false
+  disabled = false,
+  allowVideos = false
 }: FileUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -25,20 +27,29 @@ function FileUpload({
     // Validate file type
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
     if (!acceptedTypes.includes(fileExtension)) {
-      alert(`Image type not supported. Please upload: ${acceptedTypes.join(', ')}`);
+      alert(`File type not supported. Please upload: ${acceptedTypes.join(', ')}`);
       return;
     }
 
     // Validate file size
     if (file.size > maxSize * 1024 * 1024) {
-      alert(`Image size too large. Maximum size is ${maxSize}MB.`);
+      alert(`File size too large. Maximum size is ${maxSize}MB.`);
       return;
     }
 
-    // Additional validation for image files
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file.');
-      return;
+    // Additional validation for file types
+    if (allowVideos) {
+      // Allow both images and videos
+      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+        alert('Please select a valid image or video file.');
+        return;
+      }
+    } else {
+      // Only allow images
+      if (!file.type.startsWith('image/')) {
+        alert('Please select a valid image file.');
+        return;
+      }
     }
 
     setIsUploading(true);
@@ -48,26 +59,50 @@ function FileUpload({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", "KinderCare");
-      formData.append("folder", "announcement_images"); 
+      
+      // Determine folder based on file type
+      const folder = file.type.startsWith('video/') 
+        ? "KinderCare/WebApp/chat_videos" 
+        : "KinderCare/WebApp/chat_images";
+      formData.append("folder", folder);
 
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/dvremwz4m/image/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      console.log('Uploading to folder:', folder);
+
+      // Determine upload endpoint based on file type
+      const endpoint = file.type.startsWith('video/')
+        ? "https://api.cloudinary.com/v1_1/dvremwz4m/video/upload"
+        : "https://api.cloudinary.com/v1_1/dvremwz4m/image/upload";
+
+      console.log('Upload endpoint:', endpoint);
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+
+      console.log('Upload response status:', response.status);
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        const errorText = await response.text();
+        console.error('Upload failed with response:', errorText);
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Upload response:', data);
       
       // Validate response data
       if (!data.secure_url) {
+        console.error('Invalid upload response:', data);
         throw new Error('Invalid response from upload service');
       }
+      
+      console.log('Upload successful, calling onFileUpload with:', {
+        url: data.secure_url,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
       
       // Call the callback with file details
       onFileUpload(
@@ -88,10 +123,10 @@ function FileUpload({
         } else if (error.message.includes('Invalid response')) {
           alert('Upload service error. Please try again later.');
         } else {
-          alert(`Image upload failed: ${error.message}`);
+          alert(`File upload failed: ${error.message}`);
         }
       } else {
-        alert('Image upload failed. Please try again.');
+        alert('File upload failed. Please try again.');
       }
     } finally {
       setIsUploading(false);
@@ -126,8 +161,8 @@ function FileUpload({
           </>
         ) : (
           <>
-            <i className="bi bi-image"></i>
-            <span>Add Image</span>
+            <i className={allowVideos ? "bi bi-camera-video" : "bi bi-image"}></i>
+            <span>{allowVideos ? "Add Media" : "Add Image"}</span>
           </>
         )}
       </label>

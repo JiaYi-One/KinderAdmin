@@ -25,6 +25,47 @@
   display: inline-block;
 }
 
+.chat-video-container {
+  margin: 8px 0;
+}
+
+/* Video thumbnail styling */
+.video-thumbnail {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.video-thumbnail:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.video-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.video-thumbnail:hover .video-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.video-overlay i {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s ease;
+}
+
+.video-thumbnail:hover .video-overlay i {
+  transform: scale(1.1);
+}
+
 .chat-image {
   border-radius: 8px;
   cursor: pointer;
@@ -125,4 +166,137 @@
 
 .bi-paperclip {
   font-size: 1.1rem;
+}
+
+/* Message menu button and dropdown styling */
+.message-menu-button {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 10;
+}
+
+.message-menu-button-inline {
+  position: relative;
+  z-index: 10;
+}
+
+.message-menu-toggle {
+  padding: 2px 4px !important;
+  border-radius: 50% !important;
+  width: 20px !important;
+  height: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid #6c757d !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #6c757d !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.message-menu-toggle:hover {
+  background-color: #6c757d !important;
+  color: white !important;
+  transform: scale(1.1) !important;
+}
+
+.message-menu-toggle:focus {
+  box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.25) !important;
+}
+
+.message-menu-toggle i {
+  font-size: 10px !important;
+}
+
+.message-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 120px;
+  z-index: 1000;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+/* For inline menu button, adjust dropdown position */
+.message-menu-button-inline .message-dropdown-menu {
+  top: calc(100% + 4px);
+  right: 0;
+}
+
+/* Dropdown menu positioning when outside menu button container */
+.message-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 8px;
+}
+
+.message-dropdown-menu .dropdown-item {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  color: #dc3545;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.message-dropdown-menu .dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+.message-dropdown-menu .dropdown-item i {
+  font-size: 14px;
+}
+
+/* Floating delete button styling - positioned above message */
+.floating-delete-button {
+  position: absolute;
+  bottom: 100%;
+  right: 8px;
+  margin-bottom: 8px;
+  z-index: 1000;
+  pointer-events: auto;
+  padding: 4px;
+  cursor: default;
+}
+
+.floating-delete-btn {
+  padding: 8px 12px !important;
+  border-radius: 20px !important;
+  background-color: #dc3545 !important;
+  border: 1px solid #dc3545 !important;
+  color: white !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3) !important;
+  transition: all 0.2s ease !important;
+  white-space: nowrap !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.floating-delete-btn:hover {
+  background-color: #c82333 !important;
+  border-color: #bd2130 !important;
+  transform: scale(1.05) !important;
+  box-shadow: 0 6px 16px rgba(220, 53, 69, 0.4) !important;
+}
+
+.floating-delete-btn:focus {
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.5) !important;
+}
+
+.floating-delete-btn i {
+  font-size: 12px !important;
 }
