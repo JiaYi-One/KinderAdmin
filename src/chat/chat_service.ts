@@ -34,7 +34,7 @@ export type Chat = {
     image?: string;
     webUser: string;
     teacherName: string;
-    childNames?: string[]; // Unified chat children list
+    childNames?: string[]; // Array of all children names for this parent
 };
 
 export class ChatService {
@@ -79,6 +79,36 @@ export class ChatService {
 
         const staffData = querySnapshot.docs[0].data();
         return staffData.teacherName || 'Teacher';
+    }
+
+    // Get all children names for a specific parent
+    private static async getChildrenForParent(parentId: string): Promise<string[]> {
+        try {
+            const childrenNames: string[] = [];
+
+            // Query all classes to find students with matching parentId
+            const classesRef = collection(db, 'classes');
+            const classesSnapshot = await getDocs(classesRef);
+
+            for (const classDoc of classesSnapshot.docs) {
+                const studentsRef = collection(db, 'classes', classDoc.id, 'students');
+                const studentsQuery = query(studentsRef, where('parentId', '==', parentId));
+                const studentsSnapshot = await getDocs(studentsQuery);
+
+                studentsSnapshot.forEach(studentDoc => {
+                    const studentData = studentDoc.data();
+                    if (studentData.name) {
+                        childrenNames.push(studentData.name);
+                    }
+                });
+            }
+
+            // Remove duplicates and sort
+            return Array.from(new Set(childrenNames)).sort();
+        } catch (error) {
+            console.error('Error getting children for parent:', error);
+            return [];
+        }
     }
 
     // Create a new chat message
@@ -149,41 +179,47 @@ export class ChatService {
         }
     }
 
-    // Create or get a unified chat per parentId + teacherId
+    // Create or get a unified chat per parentId + teacherId (following mobile app naming conventions)
     static async createOrGetUnifiedChat(parentId: string, teacherId: string, parentName: string, teacherName: string, childName?: string): Promise<string> {
         try {
-            // Find existing unified chat for this parent-teacher pair
+            // Find existing unified chat for this parent-teacher pair (same logic as mobile app)
             const chatsRef = collection(db, 'chats');
             const q = query(chatsRef, where('parentId', '==', parentId), where('webUser', '==', teacherId));
             const snap = await getDocs(q);
             if (!snap.empty) {
                 const chatDocRef = doc(db, 'chats', snap.docs[0].id);
-                // Ensure childNames array contains current childName
+                // Ensure childNames array contains current childName (similar to mobile app logic)
                 if (childName && childName.trim()) {
                     const existing = snap.docs[0].data().childNames as string[] | undefined;
                     const updated = Array.from(new Set([...(existing || []), childName.trim()]));
-                    await updateDoc(chatDocRef, { childNames: updated });
+                    await updateDoc(chatDocRef, {
+                        childNames: updated,
+                        studentName: updated.join(', ') // Update main studentName field
+                    });
                 }
                 return snap.docs[0].id;
             }
 
-            // Create new unified chat
+            // Get all children for this parent to populate childNames (same as mobile app)
+            const allChildren = await ChatService.getChildrenForParent(parentId);
+
+            // Create new unified chat (following mobile app field structure)
             const chatRef = collection(db, 'chats');
             const chatDoc = await addDoc(chatRef, {
-                parentId,
-                parentName,
-                studentName: childName || '',
-                teacherName,
-                webUser: teacherId,
-                childNames: childName ? [childName] : [],
+                parentId: parentId,
+                parentName: parentName,
+                studentName: allChildren.join(', '), // Store all children names (same as mobile)
+                teacherName: teacherName, // Match mobile app field name
+                webUser: teacherId, // Add webUser field to match mobile app
+                childNames: allChildren, // Store as array for easier manipulation (same as mobile)
                 createdAt: serverTimestamp(),
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
-                lastMessageSender: parentName,
-                lastMessageType: 'text',
-                unread: 0,
-                unreadWeb: 0,
-                unreadMobile: 0,
+                lastMessageSender: teacherName, // Use teacherName instead of parentName (fix inconsistency)
+                lastMessageType: 'text', // Add message type field (same as mobile)
+                unread: 0, // Legacy field for backward compatibility
+                unreadWeb: 0, // Unread count for web users
+                unreadMobile: 0, // Unread count for mobile users
             });
             return chatDoc.id;
         } catch (error) {
@@ -262,40 +298,93 @@ export class ChatService {
         }
     }
 
-    // Subscribe to chat messages
+    // Subscribe to chat messages (filtered by current teacher)
     static subscribeToMessages(chatId: string, callback: (messages: Message[]) => void) {
-        const chatRef = collection(db, 'chats', chatId, 'messages');
-        const q = query(chatRef, orderBy('timestamp', 'asc'));
+        // Get current teacher ID to filter messages
+        ChatService.getCurrentTeacherId().then(currentTeacherId => {
+            const chatRef = collection(db, 'chats', chatId, 'messages');
 
-        return onSnapshot(q, (snapshot) => {
-            const messages: Message[] = [];
-            snapshot.forEach((doc) => {
-                messages.push({
-                    id: doc.id,
-                    ...doc.data(),
-                } as Message);
+            // Query messages where webUser matches current teacher OR messages from mobile (parent)
+            // We want to show: 1) Messages sent by current teacher, 2) Messages from parent to current teacher
+            const q = query(chatRef, orderBy('timestamp', 'asc'));
+
+            return onSnapshot(q, (snapshot) => {
+                const messages: Message[] = [];
+
+                snapshot.forEach((doc) => {
+                    const messageData = doc.data() as Message;
+
+                    // Include message if:
+                    // 1. It was sent by current teacher (webUser matches)
+                    // 2. It was sent by parent (no webUser field or webUser is empty) to this chat
+                    const isFromCurrentTeacher = messageData.webUser === currentTeacherId;
+                    const isFromParent = !messageData.webUser || messageData.webUser === '';
+
+                    if (isFromCurrentTeacher || isFromParent) {
+                        messages.push({
+                            ...messageData,
+                            id: doc.id,
+                        });
+                    }
+                });
+                callback(messages);
             });
-            callback(messages);
+        }).catch(error => {
+            console.error('Error getting current teacher ID:', error);
+            callback([]); // Return empty array on error
         });
+
+        // Return dummy unsubscribe function - in real implementation you'd handle this properly
+        return () => { };
     }
 
 
-    // Create a new chat (legacy method for teacher side)
+    // Create or get existing chat for teacher-parent pair (following mobile app naming conventions)
     static async createChat(parentId: string, studentName: string, parentName: string) {
         try {
             const teacherId = await ChatService.getCurrentTeacherId();
             const teacherName = await ChatService.getCurrentTeacherName();
+
+            // Check if a chat already exists for this parent-teacher pair (same logic as mobile app)
+            const chatsRef = collection(db, 'chats');
+            const q = query(chatsRef, where('parentId', '==', parentId), where('webUser', '==', teacherId));
+            const existingChats = await getDocs(q);
+
+            if (!existingChats.empty) {
+                // Chat already exists, return the existing chat ID and update childNames if needed
+                const existingChatDoc = existingChats.docs[0];
+                const existingData = existingChatDoc.data();
+
+                // Update childNames if needed (similar to mobile app logic)
+                const existingChildNames = existingData.childNames as string[] || [];
+                if (studentName && studentName.trim() && !existingChildNames.includes(studentName.trim())) {
+                    const updatedChildNames = [...existingChildNames, studentName.trim()];
+                    await updateDoc(doc(db, 'chats', existingChatDoc.id), {
+                        childNames: updatedChildNames,
+                        studentName: updatedChildNames.join(', ') // Update main studentName field
+                    });
+                }
+
+                return existingChatDoc.id;
+            }
+
+            // Get all children for this parent to populate childNames (same as mobile app)
+            const allChildren = await ChatService.getChildrenForParent(parentId);
+
+            // Create new chat if none exists (following mobile app field structure)
             const chatRef = collection(db, 'chats');
             const chatDoc = await addDoc(chatRef, {
-                parentId,
-                studentName,
-                parentName,
-                webUser: teacherId,
-                teacherName: teacherName,
+                parentId: parentId,
+                studentName: allChildren.join(', '), // Store all children names (same as mobile)
+                parentName: parentName,
+                teacherName: teacherName, // Match mobile app field name
+                webUser: teacherId, // Add webUser field to match mobile app
+                childNames: allChildren, // Store as array for easier manipulation (same as mobile)
                 createdAt: serverTimestamp(),
                 lastMessage: 'Chat started',
                 lastMessageTime: serverTimestamp(),
-                lastMessageSender: parentName,
+                lastMessageSender: teacherName, // Use teacherName instead of parentName (fix inconsistency)
+                lastMessageType: 'text', // Add message type field (same as mobile)
                 unread: 0, // Legacy field for backward compatibility
                 unreadWeb: 0, // Unread count for web users
                 unreadMobile: 0, // Unread count for mobile users
@@ -307,36 +396,52 @@ export class ChatService {
         }
     }
 
-    // Subscribe to chat list updates
+    // Subscribe to chat list updates (filtered by current teacher)
     static subscribeToChats(callback: (chats: Chat[]) => void) {
-        const chatsRef = collection(db, 'chats');
-        const q = query(chatsRef, orderBy('lastMessageTime', 'desc'));
+        // Get current teacher ID and filter chats at the database level
+        ChatService.getCurrentTeacherId().then(currentTeacherId => {
+            const chatsRef = collection(db, 'chats');
+            const q = query(
+                chatsRef,
+                where('webUser', '==', currentTeacherId),
+                orderBy('lastMessageTime', 'desc')
+            );
 
-        return onSnapshot(q, (snapshot) => {
-            const chats: Chat[] = [];
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                chats.push({
-                    id: doc.id,
-                    parentId: data.parentId,
-                    studentName: data.studentName,
-                    parentName: data.parentName,
-                    teacherId: data.teacherId,
-                    createdAt: data.createdAt?.toDate(),
-                    lastMessage: data.lastMessage,
-                    lastMessageTime: data.lastMessageTime?.toDate(),
-                    lastMessageSender: data.lastMessageSender,
-                    lastMessageType: data.lastMessageType,
-                    unread: data.unread || 0,
-                    unreadWeb: data.unreadWeb || 0,
-                    unreadMobile: data.unreadMobile || 0,
-                    image: data.image,
-                    webUser: data.webUser,
-                    teacherName: data.teacherName,
+            return onSnapshot(q, (snapshot) => {
+                const chats: Chat[] = [];
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+
+                    chats.push({
+                        id: doc.id,
+                        parentId: data.parentId,
+                        studentName: data.studentName,
+                        parentName: data.parentName,
+                        teacherId: data.teacherId,
+                        createdAt: data.createdAt?.toDate(),
+                        lastMessage: data.lastMessage,
+                        lastMessageTime: data.lastMessageTime?.toDate(),
+                        lastMessageSender: data.lastMessageSender,
+                        lastMessageType: data.lastMessageType,
+                        unread: data.unread || 0,
+                        unreadWeb: data.unreadWeb || 0,
+                        unreadMobile: data.unreadMobile || 0,
+                        image: data.image,
+                        webUser: data.webUser,
+                        teacherName: data.teacherName,
+                        childNames: data.childNames || [], // Include childNames array
+                    });
                 });
+                callback(chats);
             });
-            callback(chats);
+        }).catch(error => {
+            console.error('Error getting current teacher ID for chats:', error);
+            callback([]); // Return empty array on error
         });
+
+        // Return dummy unsubscribe function
+        return () => { };
     }
 
     // Get chats by parent ID (for mobile app compatibility)

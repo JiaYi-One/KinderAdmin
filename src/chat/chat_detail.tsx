@@ -167,14 +167,15 @@ export function ChatDetail() {
   useEffect(() => {
     if (!id) return
 
-    // Subscribe to chat updates to get chat info and aggregate all children under the same parent
+    // Subscribe to chat updates to get chat info
     const unsubscribe = ChatService.subscribeToChats((chats) => {
       const selected = chats.find(chat => chat.id === id)
       if (!selected) return
 
-      // Find all chats with the same parentId to gather children names
-      const siblingChats = chats.filter(chat => chat.parentId === selected.parentId)
-      const childNames = Array.from(new Set(siblingChats.map(c => c.studentName).filter(Boolean)))
+      // Use childNames from the chat document if available, otherwise fall back to studentName
+      const childNames = selected.childNames && selected.childNames.length > 0 
+        ? selected.childNames 
+        : selected.studentName ? [selected.studentName] : [];
 
       setChatInfo({
         name: selected.parentName,

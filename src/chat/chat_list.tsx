@@ -49,14 +49,10 @@ export function ChatList() {
         const staffSnapshot = await getDocs(staffQuery);
         
         if (!staffSnapshot.empty) {
-          const staffDoc = staffSnapshot.docs[0];
-          const staffData = staffDoc.data();
-          const teacherID = staffData.teacherID;
-
-          // 2. Subscribe to real-time chat updates using webUser field
+          // 2. Subscribe to real-time chat updates (already filtered by current teacher in ChatService)
           const unsubscribe = ChatService.subscribeToChats((chats: ChatType[]) => {
-            // Filter chats for current teacher using webUser field
-            const teacherChats = chats.filter(chat => chat.webUser === teacherID);
+            // Chats are already filtered for current teacher at the database level
+            const teacherChats = chats;
 
             // Group by parentId to unify multiple children under the same parent
             type Group = {
@@ -80,7 +76,14 @@ export function ChatList() {
                 });
               }
               const g = groups.get(chat.parentId)!;
-              if (chat.studentName) g.childNames.add(chat.studentName);
+              
+              // Use childNames from chat document if available, otherwise fall back to studentName
+              if (chat.childNames && chat.childNames.length > 0) {
+                chat.childNames.forEach(childName => g.childNames.add(childName));
+              } else if (chat.studentName) {
+                g.childNames.add(chat.studentName);
+              }
+              
               g.unreadSum += chat.unreadWeb || 0;
               if (!g.latestChat || (chat.lastMessageTime && g.latestChat.lastMessageTime && chat.lastMessageTime > g.latestChat.lastMessageTime) || (!g.latestChat?.lastMessageTime && chat.lastMessageTime)) {
                 g.latestChat = chat;
@@ -305,9 +308,10 @@ export function NewChatSelector({
 
   const handleStartChat = async (parentId: string, studentName: string, parentName: string) => {
     try {
-      // Check if a chat already exists for this student
+      // Check if a chat already exists for this parent (regardless of student)
+      // Each teacher should have only ONE chat per parent
       const existingChat = existingChats.find(
-        chat => chat.parentId === parentId && chat.studentName === studentName
+        chat => chat.parentId === parentId
       );
 
       if (existingChat) {
