@@ -38,6 +38,7 @@ interface Student {
 interface Bill {
   studentName: string;
   studentId: string;
+  classId: string;
   items: BillItem[];
   totalAmount: number;
   billDate: string;
@@ -45,6 +46,8 @@ interface Bill {
   dueDateTerm: string;
   billNumber: string;
   parentEmail?: string;
+  parentId: string;
+  parentName: string;
 }
 
 interface BillItem {
@@ -435,6 +438,12 @@ function CreateBill() {
             message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
             billCount: bills.length,
             totalAmount: totalForParent,
+            // Add student data for single bill notifications
+            studentName: bills.length === 1 ? bills[0].studentName : undefined,
+            studentId: bills.length === 1 ? bills[0].studentId : undefined,
+            classId: bills.length === 1 ? bills[0].classId : undefined,
+            billDate: bills.length === 1 ? bills[0].billDate : undefined,
+            dueDate: bills.length === 1 ? bills[0].dueDate : undefined,
             bills: bills.map((b) => ({
               amount: b.totalAmount,
               billDate: b.billDate,
@@ -442,6 +451,8 @@ function CreateBill() {
               dueDate: b.dueDate,
               dueDateTerm: b.dueDateTerm,
               studentName: b.studentName,
+              studentId: b.studentId,
+              classId: b.classId,
             })),
           };
           await setDoc(notificationDocRef, notificationRecord);
@@ -465,6 +476,12 @@ function CreateBill() {
               parentEmail: bills[0]?.parentEmail,
               entityId: bills.length === 1 ? bills[0].billNumber : undefined,
               billNumbers: bills.map(bill => bill.billNumber),
+              // Add student data for single bill notifications
+              studentName: bills.length === 1 ? bills[0].studentName : undefined,
+              studentId: bills.length === 1 ? bills[0].studentId : undefined,
+              classId: bills.length === 1 ? bills[0].classId : undefined,
+              billDate: bills.length === 1 ? bills[0].billDate : undefined,
+              dueDate: bills.length === 1 ? bills[0].dueDate : undefined,
             })
           )
         );

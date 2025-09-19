@@ -20,6 +20,11 @@ export interface PushNotificationPayload {
   // Reminder-specific optional fields
   daysRemaining?: number;
   isOverdue?: boolean;
+  // Bill-specific optional fields
+  studentId?: string;
+  classId?: string;
+  billDate?: string;
+  dueDate?: string;
 }
 
 export interface SendOptions {
