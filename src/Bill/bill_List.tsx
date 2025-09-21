@@ -83,6 +83,22 @@ function BillList() {
   const handleStatusUpdate = async (billId: string, newStatus: string) => {
     if (isUpdating) return;
     
+    // Show confirmation dialog for marking as paid
+    if (newStatus === "paid") {
+      const bill = bills.find(b => b.id === billId);
+      const confirmed = window.confirm(
+        `Are you sure you want to mark this bill as paid?\n\n` +
+        `Bill Number: ${bill?.billNumber}\n` +
+        `Student: ${bill?.studentName}\n` +
+        `Amount: RM ${bill?.totalAmount.toFixed(2)}\n\n` +
+        `This action cannot be undone.`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+    
     setIsUpdating(true);
     try {
       const billRef = doc(db, "bills", billId);
@@ -111,9 +127,15 @@ function BillList() {
           approvedOn: newStatus === "paid" ? new Date() : prev.approvedOn
         } : null);
       }
+      
+      // Show success message
+      if (newStatus === "paid") {
+        const bill = bills.find(b => b.id === billId);
+        alert(`Bill ${bill?.billNumber} has been marked as paid successfully!`);
+      }
     } catch (error) {
       console.error("Error updating bill status:", error);
-      alert("Failed to update bill status");
+      alert("❌ Failed to update bill status. Please try again.");
     } finally {
       setIsUpdating(false);
     }

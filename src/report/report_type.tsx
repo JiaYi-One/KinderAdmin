@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Trash2, Plus } from 'lucide-react'
 
 // Interfaces
@@ -6,6 +6,12 @@ interface Subject {
   name: string
   grade: string
   comments: string
+}
+
+interface SubjectTemplate {
+  id: string
+  subject: string
+  createdAt: Date
 }
 
 interface ReportData {
@@ -37,10 +43,42 @@ interface ReportTypeProps {
   getGradeDescription: (grade: string) => string
 }
 
-// Utility function
+// Utility functions
 function cn(...inputs: (string | undefined | null | false)[]) {
   return inputs.filter(Boolean).join(' ')
 }
+
+// Load subject templates from localStorage
+const loadSubjectTemplates = (): SubjectTemplate[] => {
+  try {
+    const saved = localStorage.getItem('teacherSubjectTemplates');
+    if (saved) {
+      const templates = JSON.parse(saved).map((t: { id: string; subject: string; createdAt: string }) => ({
+        ...t,
+        createdAt: new Date(t.createdAt)
+      }));
+      return templates;
+    } else {
+      // Return default subjects if no templates found
+      const defaultSubjects = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+      const defaultTemplates = defaultSubjects.map((subject, index) => ({
+        id: (index + 1).toString(),
+        subject: subject,
+        createdAt: new Date()
+      }));
+      return defaultTemplates;
+    }
+  } catch (error) {
+    console.error('Error loading subject templates:', error);
+    // Return default subjects on error
+    const defaultSubjects = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+    return defaultSubjects.map((subject, index) => ({
+      id: (index + 1).toString(),
+      subject: subject,
+      createdAt: new Date()
+    }));
+  }
+};
 
 // Card Components
 const Card = React.forwardRef<
@@ -415,6 +453,12 @@ export const ExamReportForm: React.FC<ReportTypeProps> = ({
   handleAddSubject,
   getGradeDescription
 }) => {
+  const [subjectTemplates, setSubjectTemplates] = useState<SubjectTemplate[]>([]);
+
+  useEffect(() => {
+    const templates = loadSubjectTemplates();
+    setSubjectTemplates(templates);
+  }, []);
   return (
     <>
       {/* Exam Report - Exam-specific assessment */}
@@ -459,12 +503,18 @@ export const ExamReportForm: React.FC<ReportTypeProps> = ({
             {reportData.subjects.map((subject, index) => (
               <div key={index} className="row g-3 mb-2">
                 <div className="col-md-4">
-                  <Input
+                  <Select
                     value={subject.name}
-                    onChange={(e) => handleSubjectChange(index, 'name', e.target.value)}
-                    placeholder="Subject name"
+                    onValueChange={(value) => handleSubjectChange(index, 'name', value)}
                     required={index === 0} // Only first subject is required
-                  />
+                  >
+                    <option value="">Select subject</option>
+                    {subjectTemplates.map(template => (
+                      <option key={template.id} value={template.subject}>
+                        {template.subject}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
                 <div className="col-md-4">
                   <Input

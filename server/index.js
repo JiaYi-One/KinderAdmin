@@ -26,7 +26,7 @@ app.get('/health', (_req, res) => {
 
 // Pushy notification endpoint
 app.post('/pushy', async (req, res) => {
-    const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId, teacherName, studentName, parentName } = req.body || {};
+    const { parentId, message, billCount, totalAmount, deviceTokens, type, title, entityId, teacherName, studentName, parentName, studentId, reportType } = req.body || {};
 
     console.log('📨 Notification request:', { parentId, message, billCount, totalAmount, type, title, entityId, tokens: deviceTokens?.length || 0 });
 
@@ -78,6 +78,13 @@ app.post('/pushy', async (req, res) => {
                                 studentName: studentName,
                                 parentName: parentName,
                                 content: message,
+                            } : {}),
+                            // For report notifications, include report-specific metadata
+                            ...(type === 'report' ? {
+                                studentName: studentName,
+                                studentId: studentId,
+                                reportType: reportType,
+                                teacherName: teacherName,
                             } : {}),
                         },
                         notification: {

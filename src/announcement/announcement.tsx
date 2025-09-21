@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Avatar,
   Button,
@@ -46,7 +46,7 @@ import {
 } from "@mui/icons-material"
 import { Announcement, AnnouncementComment, User as UserType, FormData, NewComment, FileAttachment } from "./types"
 import { db } from "../firebase"
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, getDoc } from "firebase/firestore"
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, getDoc, onSnapshot } from "firebase/firestore"
 import { getAuth, onAuthStateChanged } from "firebase/auth"
 import { sendPushNotification } from "../notifications/pushyClient"
 import FileUpload from "../uploadImage"
@@ -70,6 +70,10 @@ export default function AnnouncementsPage() {
   const [editingReply, setEditingReply] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState<string>("")
   const [editReplyText, setEditReplyText] = useState<string>("")
+  
+  // Real-time listeners refs
+  const announcementsUnsubscribeRef = useRef<(() => void) | null>(null)
+  const commentUnsubscribesRef = useRef<Map<string, () => void>>(new Map())
 
   // Form state for creating/editing announcements
   const [formData, setFormData] = useState<FormData>({
@@ -78,36 +82,25 @@ export default function AnnouncementsPage() {
     category: "",
   })
 
-  // Fetch announcements from Firebase
-  const fetchAnnouncements = useCallback(async () => {
-    try {
-      setLoading(true)
-      const announcementsRef = collection(db, "announcements")
-      const q = query(announcementsRef, orderBy("createdAt", "desc"))
-      const querySnapshot = await getDocs(q)
-      
-      const announcementsList: Announcement[] = []
-      
-      for (const docSnapshot of querySnapshot.docs) {
-        const data = docSnapshot.data()
-        
-        // Fetch comments for this announcement
-        const commentsRef = collection(db, "announcements", docSnapshot.id, "comments")
-        const commentsQuery = query(commentsRef, orderBy("createdAt", "asc"))
-        const commentsSnapshot = await getDocs(commentsQuery)
-        
-        const comments: AnnouncementComment[] = []
-        
-        for (const commentDoc of commentsSnapshot.docs) {
-          const commentData = commentDoc.data()
-          
+  // Set up comment listener for a specific announcement
+  const setupCommentListener = useCallback((announcementId: string) => {
+    const commentsRef = collection(db, "announcements", announcementId, "comments");
+    const commentsQuery = query(commentsRef, orderBy("createdAt", "asc"));
+
+    const commentUnsubscribe = onSnapshot(commentsQuery, async (snapshot) => {
+      try {
+        const comments: AnnouncementComment[] = [];
+
+        for (const commentDoc of snapshot.docs) {
+          const commentData = commentDoc.data();
+
           // Fetch replies for this comment
-          const repliesRef = collection(db, "announcements", docSnapshot.id, "comments", commentDoc.id, "replies")
-          const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"))
-          const repliesSnapshot = await getDocs(repliesQuery)
-          
+          const repliesRef = collection(db, "announcements", announcementId, "comments", commentDoc.id, "replies");
+          const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"));
+          const repliesSnapshot = await getDocs(repliesQuery);
+
           const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => {
-            const replyData = replyDoc.data()
+            const replyData = replyDoc.data();
             return {
               id: replyDoc.id,
               author: replyData.author,
@@ -117,10 +110,10 @@ export default function AnnouncementsPage() {
               parentId: replyData.parentId,
               createdAt: replyData.createdAt,
               updatedAt: replyData.updatedAt,
-              replies: [], // Add empty replies array for replies since they're leaf nodes
-            }
-          })
-          
+              replies: [],
+            };
+          });
+
           comments.push({
             id: commentDoc.id,
             author: commentData.author,
@@ -130,14 +123,185 @@ export default function AnnouncementsPage() {
             replies: replies,
             createdAt: commentData.createdAt,
             updatedAt: commentData.updatedAt,
-          })
+          });
         }
 
-        // Use the document ID directly - don't try to convert to number
-        const announcementId = docSnapshot.id
-        
+        // Update only this announcement's comments
+        setAnnouncements(prev => 
+          prev.map(ann => 
+            ann.id === announcementId 
+              ? { ...ann, comments } 
+              : ann
+          )
+        );
+      } catch (error) {
+        console.error(`Error in comments listener for announcement ${announcementId}:`, error);
+      }
+    });
+
+    commentUnsubscribesRef.current.set(announcementId, commentUnsubscribe);
+  }, []);
+
+  // Set up real-time listeners (without loading screen)
+  const setupRealTimeListeners = useCallback((initialAnnouncements: Announcement[]) => {
+    if (!currentUser) return;
+
+    // Clean up existing listeners
+    if (announcementsUnsubscribeRef.current) {
+      announcementsUnsubscribeRef.current();
+    }
+    commentUnsubscribesRef.current.forEach(unsubscribe => unsubscribe());
+    commentUnsubscribesRef.current.clear();
+    
+    const announcementsRef = collection(db, "announcements");
+    const q = query(announcementsRef, orderBy("createdAt", "desc"));
+
+    // Listen for announcement changes (likes, new announcements, edits)
+    const announcementUnsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        const announcementId = change.doc.id;
+
+        if (change.type === "added") {
+          // New announcement added
+          const newAnnouncement: Announcement = {
+            id: announcementId,
+            title: data.title,
+            content: data.content,
+            author: data.author,
+            authorRole: data.authorRole,
+            authorAvatar: data.authorAvatar || "",
+            category: data.category,
+            likes: data.likes || 0,
+            comments: [],
+            attachments: data.attachments || [],
+            isLiked: currentUser ? (data.likedBy?.includes(currentUser.name) || false) : false,
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt,
+          };
+
+          setAnnouncements(prev => {
+            // Check if announcement already exists
+            const exists = prev.some(ann => ann.id === announcementId);
+            if (exists) return prev;
+            
+            // Insert in correct position based on creation time
+            const newList = [...prev, newAnnouncement];
+            return newList.sort((a, b) => {
+              const getTime = (timestamp: unknown) => {
+                if (timestamp && typeof timestamp === 'object' && 'toDate' in timestamp) {
+                  return (timestamp as { toDate: () => Date }).toDate().getTime();
+                }
+                if (timestamp instanceof Date) return timestamp.getTime();
+                if (typeof timestamp === 'string') return new Date(timestamp).getTime();
+                return new Date().getTime();
+              };
+              return getTime(b.createdAt) - getTime(a.createdAt);
+            });
+          });
+
+          // Set up comment listener for new announcement
+          setupCommentListener(announcementId);
+        } else if (change.type === "modified") {
+          // Announcement modified (likes, content, etc.)
+          setAnnouncements(prev =>
+            prev.map(ann =>
+              ann.id === announcementId
+                ? {
+                    ...ann,
+                    title: data.title,
+                    content: data.content,
+                    category: data.category,
+                    likes: data.likes || 0,
+                    attachments: data.attachments || [],
+                    isLiked: currentUser ? (data.likedBy?.includes(currentUser.name) || false) : false,
+                    updatedAt: data.updatedAt,
+                  }
+                : ann
+            )
+          );
+        } else if (change.type === "removed") {
+          // Announcement deleted
+          setAnnouncements(prev => prev.filter(ann => ann.id !== announcementId));
+          
+          // Clean up comment listener
+          const commentUnsubscribe = commentUnsubscribesRef.current.get(announcementId);
+          if (commentUnsubscribe) {
+            commentUnsubscribe();
+            commentUnsubscribesRef.current.delete(announcementId);
+          }
+        }
+      });
+    });
+
+    announcementsUnsubscribeRef.current = announcementUnsubscribe;
+
+    // Set up comment listeners for existing announcements
+    initialAnnouncements.forEach(announcement => {
+      setupCommentListener(announcement.id);
+    });
+  }, [currentUser, setupCommentListener]);
+
+  // Initial data load (only runs once)
+  const loadInitialData = useCallback(async () => {
+    if (!currentUser) return;
+
+    try {
+      setLoading(true);
+      const announcementsRef = collection(db, "announcements");
+      const q = query(announcementsRef, orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+
+      const announcementsList: Announcement[] = [];
+
+      for (const docSnapshot of snapshot.docs) {
+        const data = docSnapshot.data();
+        const announcementId = docSnapshot.id;
+
+        // Load initial comments
+        const commentsRef = collection(db, "announcements", announcementId, "comments");
+        const commentsQuery = query(commentsRef, orderBy("createdAt", "asc"));
+        const commentsSnapshot = await getDocs(commentsQuery);
+
+        const comments: AnnouncementComment[] = [];
+
+        for (const commentDoc of commentsSnapshot.docs) {
+          const commentData = commentDoc.data();
+
+          // Fetch replies for this comment
+          const repliesRef = collection(db, "announcements", announcementId, "comments", commentDoc.id, "replies");
+          const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"));
+          const repliesSnapshot = await getDocs(repliesQuery);
+
+          const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => {
+            const replyData = replyDoc.data();
+            return {
+              id: replyDoc.id,
+              author: replyData.author,
+              authorAvatar: replyData.authorAvatar,
+              content: replyData.content,
+              authorRole: replyData.authorRole,
+              parentId: replyData.parentId,
+              createdAt: replyData.createdAt,
+              updatedAt: replyData.updatedAt,
+              replies: [],
+            };
+          });
+
+          comments.push({
+            id: commentDoc.id,
+            author: commentData.author,
+            authorAvatar: commentData.authorAvatar,
+            content: commentData.content,
+            authorRole: commentData.authorRole,
+            replies: replies,
+            createdAt: commentData.createdAt,
+            updatedAt: commentData.updatedAt,
+          });
+        }
+
         announcementsList.push({
-          id: announcementId, // Use string ID directly
+          id: announcementId,
           title: data.title,
           content: data.content,
           author: data.author,
@@ -146,20 +310,24 @@ export default function AnnouncementsPage() {
           category: data.category,
           likes: data.likes || 0,
           comments: comments,
-          attachments: data.attachments || [], // Include attachments
+          attachments: data.attachments || [],
           isLiked: currentUser ? (data.likedBy?.includes(currentUser.name) || false) : false,
-          createdAt: data.createdAt, // Add Firebase timestamp
-          updatedAt: data.updatedAt, // Add updated timestamp if exists
-        })
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        });
       }
+
+      setAnnouncements(announcementsList);
       
-      setAnnouncements(announcementsList)
+      // After initial load, set up real-time listeners
+      setupRealTimeListeners(announcementsList);
     } catch (error) {
-      console.error("Error fetching announcements:", error)
+      console.error("Error loading initial data:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [currentUser])
+  }, [currentUser, setupRealTimeListeners]);
+
 
   // Get current user from authentication
   useEffect(() => {
@@ -203,12 +371,23 @@ export default function AnnouncementsPage() {
     return () => unsubscribe()
   }, [])
 
-  // Fetch announcements when current user is loaded
+  // Load initial data when current user is loaded
   useEffect(() => {
     if (currentUser) {
-      fetchAnnouncements()
+      loadInitialData()
     }
-  }, [currentUser, fetchAnnouncements])
+  }, [currentUser, loadInitialData])
+
+  // Cleanup listeners on component unmount
+  useEffect(() => {
+    return () => {
+      if (announcementsUnsubscribeRef.current) {
+        announcementsUnsubscribeRef.current()
+      }
+      const commentUnsubscribes = commentUnsubscribesRef.current
+      commentUnsubscribes.forEach(unsubscribe => unsubscribe())
+    }
+  }, [])
 
   // File handling functions
   const handleImageUpload = (fileUrl: string, fileName: string, fileSize: number, fileType: string) => {
@@ -378,26 +557,11 @@ export default function AnnouncementsPage() {
       // Save to Firebase
       await setDoc(newAnnouncementRef, announcementData)
 
-      // Create local announcement object
-      const newAnnouncement: Announcement = {
-        id: announcementId,
-        title: formData.title,
-        content: formData.content,
-        author: currentUser.name,
-        authorRole: currentUser.role,
-        authorAvatar: currentUser.avatar || "",
-        category: formData.category,
-        likes: 0,
-        comments: [],
-        attachments: attachments,
-        isLiked: false,
-        createdAt: new Date(), // Add current date for immediate display
-      }
+      // Announcement will be added by real-time listener
 
-      // Update local state
-      setAnnouncements([newAnnouncement, ...announcements])
+      // Clear form and close dialog - real-time listener will update the list
       setFormData({ title: "", content: "", category: "" })
-      setAttachments([]) // Clear attachments
+      setAttachments([])
       setIsCreateDialogOpen(false)
 
       // Show success message
@@ -476,23 +640,10 @@ export default function AnnouncementsPage() {
         updatedAt: serverTimestamp(),
       })
 
-      setAnnouncements(
-        announcements.map((ann) =>
-          ann.id === editingAnnouncement.id
-            ? { 
-                ...ann, 
-                title: formData.title, 
-                content: formData.content, 
-                category: formData.category,
-                attachments: attachments,
-                updatedAt: new Date() // Add current timestamp for immediate display
-              }
-            : ann,
-        ),
-      )
+      // Clear form - real-time listener will update the list
       setEditingAnnouncement(null)
       setFormData({ title: "", content: "", category: "" })
-      setAttachments([]) // Clear attachments
+      setAttachments([])
     } catch (error) {
       console.error("Error updating announcement:", error)
       alert("Error updating announcement. Please try again.")
@@ -504,7 +655,7 @@ export default function AnnouncementsPage() {
       const announcementRef = doc(db, "announcements", id)
       await deleteDoc(announcementRef)
       
-      setAnnouncements(announcements.filter((ann) => ann.id !== id))
+      // Real-time listener will update the list
       setAnchorEl(null)
     } catch (error) {
       console.error("Error deleting announcement:", error)
@@ -565,22 +716,7 @@ export default function AnnouncementsPage() {
           likedBy: newLikedBy,
         })
         
-        console.log("Firebase updated successfully")
-        
-        // Update local state
-        setAnnouncements(
-          announcements.map((ann) =>
-            ann.id === id
-              ? {
-                  ...ann,
-                  isLiked: !ann.isLiked,
-                  likes: newLikes,
-                }
-              : ann,
-          ),
-        )
-        
-        console.log("Local state updated")
+        console.log("Firebase updated successfully - real-time listener will update UI")
       } else {
         console.error("Announcement document not found in Firebase")
       }
@@ -598,7 +734,6 @@ export default function AnnouncementsPage() {
       // Create a new comment document reference with auto-generated ID
       const commentsRef = collection(db, "announcements", announcementId, "comments")
       const newCommentRef = doc(commentsRef)
-      const commentId = newCommentRef.id
       
       const commentData = {
         author: currentUser.name,
@@ -610,25 +745,8 @@ export default function AnnouncementsPage() {
 
       // Save to Firebase
       await setDoc(newCommentRef, commentData)
-      
-      const comment: AnnouncementComment = {
-        id: commentId,
-        author: currentUser.name,
-        authorAvatar: currentUser.avatar || "",
-        content: commentText,
-        authorRole: currentUser.role,
-        replies: [],
-        createdAt: new Date(), // Add current date for immediate display
-      }
 
-      setAnnouncements(
-        announcements.map((ann) => 
-          ann.id === announcementId 
-            ? { ...ann, comments: [...ann.comments, comment] } 
-            : ann
-        ),
-      )
-
+      // Clear comment input - real-time listener will update the comments
       setNewComment({ ...newComment, [announcementId]: "" })
     } catch (error) {
       console.error("Error adding comment:", error)
@@ -644,7 +762,6 @@ export default function AnnouncementsPage() {
       // Create a new reply document reference
       const repliesRef = collection(db, "announcements", announcementId, "comments", parentCommentId, "replies")
       const newReplyRef = doc(repliesRef)
-      const replyId = newReplyRef.id
       
       const replyData = {
         author: currentUser.name,
@@ -657,33 +774,8 @@ export default function AnnouncementsPage() {
 
       // Save to Firebase
       await setDoc(newReplyRef, replyData)
-      
-      const reply: AnnouncementComment = {
-        id: replyId,
-        author: currentUser.name,
-        authorAvatar: currentUser.avatar || "",
-        content: replyText,
-        authorRole: currentUser.role,
-        parentId: parentCommentId,
-        createdAt: new Date(), // Add current date for immediate display
-        replies: [], // Add empty replies array for replies since they're leaf nodes
-      }
 
-      setAnnouncements(
-        announcements.map((ann) => 
-          ann.id === announcementId 
-            ? {
-                ...ann,
-                comments: ann.comments.map((comment) =>
-                  comment.id === parentCommentId
-                    ? { ...comment, replies: [...(comment.replies || []), reply] }
-                    : comment
-                )
-              }
-            : ann
-        ),
-      )
-
+      // Clear reply input and close reply mode - real-time listener will update the replies
       setNewReply({ ...newReply, [parentCommentId]: "" })
       setReplyingTo(null)
     } catch (error) {
@@ -703,21 +795,7 @@ export default function AnnouncementsPage() {
         updatedAt: serverTimestamp(),
       })
 
-      setAnnouncements(
-        announcements.map((ann) =>
-          ann.id === announcementId
-            ? {
-                ...ann,
-                comments: ann.comments.map((comment) =>
-                  comment.id === commentId
-                    ? { ...comment, content: editCommentText, updatedAt: new Date() }
-                    : comment
-                )
-              }
-            : ann
-        )
-      )
-
+      // Clear edit state - real-time listener will update the comment
       setEditingComment(null)
       setEditCommentText("")
     } catch (error) {
@@ -737,28 +815,7 @@ export default function AnnouncementsPage() {
         updatedAt: serverTimestamp(),
       })
 
-      setAnnouncements(
-        announcements.map((ann) =>
-          ann.id === announcementId
-            ? {
-                ...ann,
-                comments: ann.comments.map((comment) =>
-                  comment.id === commentId
-                    ? {
-                        ...comment,
-                        replies: comment.replies?.map((reply) =>
-                          reply.id === replyId
-                            ? { ...reply, content: editReplyText, updatedAt: new Date() }
-                            : reply
-                        )
-                      }
-                    : comment
-                )
-              }
-            : ann
-        )
-      )
-
+      // Clear edit state - real-time listener will update the reply
       setEditingReply(null)
       setEditReplyText("")
     } catch (error) {
@@ -775,16 +832,7 @@ export default function AnnouncementsPage() {
       const commentRef = doc(db, "announcements", announcementId, "comments", commentId)
       await deleteDoc(commentRef)
 
-      setAnnouncements(
-        announcements.map((ann) =>
-          ann.id === announcementId
-            ? {
-                ...ann,
-                comments: ann.comments.filter((comment) => comment.id !== commentId)
-              }
-            : ann
-        )
-      )
+      // Real-time listener will update the comments
     } catch (error) {
       console.error("Error deleting comment:", error)
       alert("Error deleting comment. Please try again.")
@@ -799,23 +847,7 @@ export default function AnnouncementsPage() {
       const replyRef = doc(db, "announcements", announcementId, "comments", commentId, "replies", replyId)
       await deleteDoc(replyRef)
 
-      setAnnouncements(
-        announcements.map((ann) =>
-          ann.id === announcementId
-            ? {
-                ...ann,
-                comments: ann.comments.map((comment) =>
-                  comment.id === commentId
-                    ? {
-                        ...comment,
-                        replies: comment.replies?.filter((reply) => reply.id !== replyId)
-                      }
-                    : comment
-                )
-              }
-            : ann
-        )
-      )
+      // Real-time listener will update the replies
     } catch (error) {
       console.error("Error deleting reply:", error)
       alert("Error deleting reply. Please try again.")

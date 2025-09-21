@@ -944,6 +944,7 @@ function TeacherReportForm() {
               message: `New ${reportData.reportType} report available for ${reportData.studentName}`,
               reportId: docRef.id,
               studentName: reportData.studentName,
+              studentId: reportData.studentId,
               reportType: reportData.reportType,
               teacherName: reportData.teacherName,
               reportDate: reportData.date
@@ -960,9 +961,11 @@ function TeacherReportForm() {
                 type: "report",
                 title: "New Report Available",
                 entityId: docRef.id,
+                studentName: reportData.studentName,
+                studentId: reportData.studentId,
+                teacherName: reportData.teacherName,
                 parentEmail: parentEmail
               })
-              
               if (pushSuccess) {
                 console.log('✅ Push notification sent successfully')
                 alert('Report saved and notification sent successfully!')
