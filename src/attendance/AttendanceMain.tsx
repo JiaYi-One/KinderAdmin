@@ -47,7 +47,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [isWeekend] = useState(false);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-  const [students, setStudents] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [students, setStudents] = useState<{ id: string; name: string; status: string; reason?: string }[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
 
 
@@ -58,15 +58,21 @@ export default function Dashboard() {
         setLoading(true);
         setError(null);
 
-        const today = new Date().toISOString().split('T')[0];
+        // Get current date in local timezone to avoid timezone issues
+        const now = new Date();
+        const today = now.getFullYear() + '-' + 
+                     String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(now.getDate()).padStart(2, '0');
         
         // Check if today is weekend
-        const todayDate = new Date();
-        const dayOfWeek = todayDate.getDay(); // 0 = Sunday, 6 = Saturday
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
         const weekend = dayOfWeek === 0 || dayOfWeek === 6;
         
-        // If it's weekend, show no attendance
+        console.log('Today date (local):', today, 'Day of week:', dayOfWeek, 'Is weekend:', weekend);
+        
+        // Use today's date for attendance fetching
         const displayDate = today;
+        console.log('Display date being used for attendance:', displayDate);
         
         // setIsWeekend(weekend); // This state is removed
         
@@ -83,8 +89,8 @@ export default function Dashboard() {
           return;
         }
 
-        // Fetch all classes
-        const classesSnapshot = await getDocs(collection(db, "attendance"));
+        // Fetch all classes from the classes collection (same as TakeAttendance)
+        const classesSnapshot = await getDocs(collection(db, "classes"));
         const classIds = classesSnapshot.docs.map(doc => doc.id);
         
         console.log('Found classes:', classIds);
@@ -99,6 +105,9 @@ export default function Dashboard() {
         let totalLeave = 0;
         const classData: ClassData[] = [];
 
+        // Clear cache to ensure fresh data
+        AttendanceDataService.clearCache();
+        
         // Use Promise.all for parallel API calls instead of sequential
         const attendancePromises = classIds.map(async (classId) => {
           try {
@@ -182,16 +191,20 @@ export default function Dashboard() {
     setLoadingStudents(true);
     
     try {
-      // Get today's date or last Friday if weekend
+      // Get today's date or last Friday if weekend (using local timezone)
       const today = new Date();
       const dayOfWeek = today.getDay();
-      let displayDate = today.toISOString().split('T')[0];
+      let displayDate = today.getFullYear() + '-' + 
+                       String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                       String(today.getDate()).padStart(2, '0');
       
       if (dayOfWeek === 0 || dayOfWeek === 6) {
         const lastFriday = new Date(today);
-        const daysToSubtract = dayOfWeek === 0 ? 2 : 1;
+        const daysToSubtract = dayOfWeek === 0 ? 2 : 1; // Sunday: go back 2 days, Saturday: go back 1 day
         lastFriday.setDate(today.getDate() - daysToSubtract);
-        displayDate = lastFriday.toISOString().split('T')[0];
+        displayDate = lastFriday.getFullYear() + '-' + 
+                     String(lastFriday.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(lastFriday.getDate()).padStart(2, '0');
       }
       
       const result = await AttendanceDataService.fetchClassAttendance(classId, displayDate);
@@ -556,7 +569,16 @@ export default function Dashboard() {
                   </ListItemIcon>
                   <ListItemText 
                     primary={student.name}
-                    secondary={`Student ID: ${student.id}`}
+                    secondary={
+                      <div>
+                        <div>Student ID: {student.id}</div>
+                        {(student.status === 'absent' || student.status === 'on leave') && student.reason && (
+                          <div style={{ marginTop: 4, fontStyle: 'italic', color: 'text.secondary' }}>
+                            Reason: {student.reason}
+                          </div>
+                        )}
+                      </div>
+                    }
                   />
                   <Chip 
                     label={student.status.toUpperCase()} 

@@ -50,12 +50,25 @@ import type { ChipProps } from '@mui/material';
 import AttendanceDataService from './attendanceService';
 import { fetchDailyAttendance, fetchMonthlyAttendance } from './attendanceUtils';
 
+// Utility: Get Monday of a week from any date
+function getMondayOfWeek(date: Date): Date {
+  const dayOfWeek = date.getDay(); // 0 (Sun) - 6 (Sat)
+  const monday = new Date(date);
+  
+  // Calculate days to subtract to get to Monday
+  const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  monday.setDate(date.getDate() - daysToSubtract);
+  
+  return monday;
+}
+
 // Utility: Get all dates in a specific week (Mon-Fri)
 function getWeekDates(startDate: Date): Date[] {
-  const dayOfWeek = startDate.getDay(); // 0 (Sun) - 6 (Sat)
-  const monday = new Date(startDate);
-  monday.setDate(startDate.getDate() - ((dayOfWeek + 6) % 7));
+  // Ensure we start from Monday regardless of input date
+  const monday = getMondayOfWeek(startDate);
+  
   const dates: Date[] = [];
+  // Only add Monday through Friday (5 days)
   for (let i = 0; i < 5; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -145,7 +158,7 @@ export default function ReportsPage() {
   });
   const [selectedWeek, setSelectedWeek] = useState(() => {
     const today = new Date();
-    return new Date(today);
+    return getMondayOfWeek(today);
   });
 
   const [classIDs, setClassIDs] = useState<string[]>([]);
@@ -207,8 +220,8 @@ export default function ReportsPage() {
     setLoadingClasses(true);
     const fetchClassIDs = async () => {
       try {
-        const attendanceCol = collection(db, "attendance");
-        const snapshot = await getDocs(attendanceCol);
+        const classesCol = collection(db, "classes");
+        const snapshot = await getDocs(classesCol);
         setClassIDs(snapshot.docs.map(doc => doc.id));
       } catch (err) {
         console.error('Error fetching class IDs:', err);
@@ -613,9 +626,9 @@ export default function ReportsPage() {
     setSelectedClassForDate(classId);
   };
 
-  const handleBackToClasses = () => {
-    setSelectedClassForDate(null);
-  };
+  // const handleBackToClasses = () => {
+  //   setSelectedClassForDate(null);
+  // };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -1209,16 +1222,16 @@ export default function ReportsPage() {
               {selectedDateDetails?.date ? dayjs(selectedDateDetails.date).format('DD MMM YYYY (dddd)') : ''} - {selectedClassForDate ? `${selectedClassForDate} Students` : 'Class Overview'}
             </Typography>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {selectedClassForDate && (
-                <Button 
-                  variant="outlined" 
-                  size="small" 
-                  onClick={handleBackToClasses}
-                  startIcon={<ArrowBackIcon />}
-                >
-                  Back to Classes
-                </Button>
-              )}
+              {/* {selectedClassForDate && (
+                // <Button 
+                //   variant="outlined" 
+                //   size="small" 
+                //   onClick={handleBackToClasses}
+                //   startIcon={<ArrowBackIcon />}
+                // >
+                //   Back to Classes
+                // </Button>
+              )} */}
               <IconButton onClick={handleCloseDateDialog}>
                 <CloseIcon />
               </IconButton>

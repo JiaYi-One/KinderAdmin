@@ -5,13 +5,22 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { Link } from 'react-router-dom';
 
+// Helper function to get Monday of a week from any date
+function getMondayOfWeek(date: Date): Date {
+  const dayOfWeek = date.getDay(); // 0 (Sun) - 6 (Sat)
+  const monday = new Date(date);
+  
+  // Calculate days to subtract to get to Monday
+  const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  monday.setDate(date.getDate() - daysToSubtract);
+  
+  return monday;
+}
+
 // Helper function to get current week (Monday to Friday)
 function getCurrentWeek(): string {
   const today = new Date();
-  const monday = new Date(today);
-  const day = today.getDay();
-  const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-  monday.setDate(diff);
+  const monday = getMondayOfWeek(today);
   return monday.toISOString().split('T')[0];
 }
 
@@ -90,7 +99,7 @@ const ManageStudentAttendance: React.FC = () => {
   // Fetch all classes for management
   const fetchAllClasses = async () => {
     try {
-      const classesSnapshot = await getDocs(collection(db, "attendance"));
+      const classesSnapshot = await getDocs(collection(db, "classes"));
       const classIds = classesSnapshot.docs.map(doc => doc.id);
       const classData: ClassData[] = [];
       for (const classId of classIds) {
@@ -154,20 +163,14 @@ const ManageStudentAttendance: React.FC = () => {
     const next = new Date(selectedWeek);
     next.setDate(next.getDate() + 7);
     const today = new Date();
-    const thisMonday = new Date(today);
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    thisMonday.setDate(diff);
+    const thisMonday = getMondayOfWeek(today);
     if (next <= thisMonday) {
       handleWeekChange(next.toISOString().split('T')[0]);
     }
   };
   const isNextWeekDisabled = (() => {
     const today = new Date();
-    const thisMonday = new Date(today);
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    thisMonday.setDate(diff);
+    const thisMonday = getMondayOfWeek(today);
     return new Date(selectedWeek).getTime() >= thisMonday.getTime();
   })();
 
@@ -277,14 +280,14 @@ const ManageStudentAttendance: React.FC = () => {
         >
           Back
         </Button>
-        <Button
+        {/* <Button
           component={Link}
           to="/attendance/stud_onleave"
           variant="contained"
           size="small"
         >
           Weekly On Leave
-        </Button>
+        </Button> */}
       </div>
       <div className="container py-4">
         <div className="bg-white rounded shadow p-4">
@@ -398,11 +401,12 @@ const ManageStudentAttendance: React.FC = () => {
                       <div>
                         <Typography variant="subtitle1" style={{ marginBottom: '8px' }}>Weekly Schedule</Typography>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {getWeekDates(selectedWeek).map((date, index) => {
+                          {getWeekDates(selectedWeek).map((date) => {
                             const dayData = studentWeeklyAttendance.weeklyData[date];
-                            const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-                            const dayName = dayNames[index];
-                            const formattedDate = new Date(date).toLocaleDateString();
+                            const dateObj = new Date(date);
+                            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                            const dayName = dayNames[dateObj.getDay()];
+                            const formattedDate = dateObj.toLocaleDateString();
                             return (
                               <div key={date}>
                                 <Card>

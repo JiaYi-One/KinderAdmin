@@ -39,7 +39,7 @@ import {
   Delete,
   Send,
   Add,
-  Person,
+  
   Group,
   Image,
   Close
@@ -87,46 +87,70 @@ export default function AnnouncementsPage() {
     const commentsRef = collection(db, "announcements", announcementId, "comments");
     const commentsQuery = query(commentsRef, orderBy("createdAt", "asc"));
 
-    const commentUnsubscribe = onSnapshot(commentsQuery, async (snapshot) => {
+    const commentUnsubscribe = onSnapshot(commentsQuery, (snapshot) => {
       try {
         const comments: AnnouncementComment[] = [];
+        const replyUnsubscribes: (() => void)[] = [];
 
-        for (const commentDoc of snapshot.docs) {
+        // Process each comment
+        snapshot.docs.forEach((commentDoc) => {
           const commentData = commentDoc.data();
-
-          // Fetch replies for this comment
-          const repliesRef = collection(db, "announcements", announcementId, "comments", commentDoc.id, "replies");
-          const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"));
-          const repliesSnapshot = await getDocs(repliesQuery);
-
-          const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => {
-            const replyData = replyDoc.data();
-            return {
-              id: replyDoc.id,
-              author: replyData.author,
-              authorAvatar: replyData.authorAvatar,
-              content: replyData.content,
-              authorRole: replyData.authorRole,
-              parentId: replyData.parentId,
-              createdAt: replyData.createdAt,
-              updatedAt: replyData.updatedAt,
-              replies: [],
-            };
-          });
-
-          comments.push({
+          
+          // Create comment object with empty replies initially
+          const comment: AnnouncementComment = {
             id: commentDoc.id,
             author: commentData.author,
             authorAvatar: commentData.authorAvatar,
             content: commentData.content,
             authorRole: commentData.authorRole,
-            replies: replies,
+            replies: [],
             createdAt: commentData.createdAt,
             updatedAt: commentData.updatedAt,
-          });
-        }
+          };
 
-        // Update only this announcement's comments
+          comments.push(comment);
+
+          // Set up real-time listener for replies
+          const repliesRef = collection(db, "announcements", announcementId, "comments", commentDoc.id, "replies");
+          const repliesQuery = query(repliesRef, orderBy("createdAt", "asc"));
+          
+          const replyUnsubscribe = onSnapshot(repliesQuery, (repliesSnapshot) => {
+            const replies: AnnouncementComment[] = repliesSnapshot.docs.map(replyDoc => {
+              const replyData = replyDoc.data();
+              return {
+                id: replyDoc.id,
+                author: replyData.author,
+                authorAvatar: replyData.authorAvatar,
+                content: replyData.content,
+                authorRole: replyData.authorRole,
+                parentId: replyData.parentId,
+                createdAt: replyData.createdAt,
+                updatedAt: replyData.updatedAt,
+                replies: [],
+              };
+            });
+
+            // Update replies for this specific comment
+            setAnnouncements(prev => 
+              prev.map(ann => 
+                ann.id === announcementId 
+                  ? { 
+                      ...ann, 
+                      comments: ann.comments.map(c => 
+                        c.id === commentDoc.id 
+                          ? { ...c, replies }
+                          : c
+                      )
+                    }
+                  : ann
+              )
+            );
+          });
+
+          replyUnsubscribes.push(replyUnsubscribe);
+        });
+
+        // Update comments for this announcement
         setAnnouncements(prev => 
           prev.map(ann => 
             ann.id === announcementId 
@@ -134,11 +158,18 @@ export default function AnnouncementsPage() {
               : ann
           )
         );
+
+        // Store all unsubscribe functions (comments + replies)
+        const allUnsubscribes = [commentUnsubscribe, ...replyUnsubscribes];
+        commentUnsubscribesRef.current.set(announcementId, () => {
+          allUnsubscribes.forEach(unsub => unsub());
+        });
       } catch (error) {
         console.error(`Error in comments listener for announcement ${announcementId}:`, error);
       }
     });
 
+    // Store the main comment unsubscribe function initially
     commentUnsubscribesRef.current.set(announcementId, commentUnsubscribe);
   }, []);
 
@@ -380,12 +411,14 @@ export default function AnnouncementsPage() {
 
   // Cleanup listeners on component unmount
   useEffect(() => {
+    const announcementsUnsub = announcementsUnsubscribeRef.current
+    const commentUnsubs = commentUnsubscribesRef.current
+    
     return () => {
-      if (announcementsUnsubscribeRef.current) {
-        announcementsUnsubscribeRef.current()
+      if (announcementsUnsub) {
+        announcementsUnsub()
       }
-      const commentUnsubscribes = commentUnsubscribesRef.current
-      commentUnsubscribes.forEach(unsubscribe => unsubscribe())
+      commentUnsubs.forEach(unsubscribe => unsubscribe())
     }
   }, [])
 
@@ -651,6 +684,12 @@ export default function AnnouncementsPage() {
   }
 
   const handleDeleteAnnouncement = async (id: string) => {
+    // Find the announcement to get its title for the confirmation
+    const announcement = announcements.find(ann => ann.id === id)
+    const title = announcement ? announcement.title : "this announcement"
+    
+    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) return
+
     try {
       const announcementRef = doc(db, "announcements", id)
       await deleteDoc(announcementRef)
@@ -826,7 +865,7 @@ export default function AnnouncementsPage() {
 
   // Delete comment function
   const handleDeleteComment = async (announcementId: string, commentId: string) => {
-    if (!confirm("Are you sure you want to delete this comment?")) return
+    if (!confirm("Are you sure you want to delete this comment? This action cannot be undone.")) return
 
     try {
       const commentRef = doc(db, "announcements", announcementId, "comments", commentId)
@@ -841,7 +880,7 @@ export default function AnnouncementsPage() {
 
   // Delete reply function
   const handleDeleteReply = async (announcementId: string, commentId: string, replyId: string) => {
-    if (!confirm("Are you sure you want to delete this reply?")) return
+    if (!confirm("Are you sure you want to delete this reply? This action cannot be undone.")) return
 
     try {
       const replyRef = doc(db, "announcements", announcementId, "comments", commentId, "replies", replyId)
@@ -1416,7 +1455,7 @@ export default function AnnouncementsPage() {
                                     {comment.author}
                                   </Typography>
                                   <Chip 
-                                    icon={comment.authorRole === "parent" ? <Person /> : <Group />}
+                                  
                                     label={comment.authorRole === "parent" ? "Parent" : comment.authorRole === "admin" ? "Admin" : "Teacher"}
                                     size="small" 
                                     variant="outlined"
@@ -1553,7 +1592,6 @@ export default function AnnouncementsPage() {
                                           {reply.author}
                                         </Typography>
                                         <Chip 
-                                          icon={reply.authorRole === "parent" ? <Person /> : <Group />}
                                           label={reply.authorRole === "parent" ? "Parent" : reply.authorRole === "admin" ? "Admin" : "Teacher"}
                                           size="small" 
                                           variant="outlined"

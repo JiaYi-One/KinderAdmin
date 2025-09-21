@@ -52,6 +52,9 @@ const AttendanceDataService = {
             const [year, month] = date.split('-').slice(0, 2);
             const monthDocId = `${year}-${month}`;
             
+            // Debug logging
+            console.log(`Fetching attendance for class: ${classId}, date: ${date}, monthDoc: ${monthDocId}`);
+            
             // Fetch the monthly document
             const monthlyDocRef = doc(db, "attendance", classId, "months", monthDocId);
             const monthlyDoc = await getDoc(monthlyDocRef);
@@ -67,26 +70,23 @@ const AttendanceDataService = {
             
             if (monthlyDoc.exists()) {
                 const data = monthlyDoc.data() as MonthlyAttendanceData;
+                console.log(`Monthly doc exists for ${classId}:`, Object.keys(data));
                 const dayData = data[date];
+                console.log(`Day data for ${date}:`, dayData);
                 
                 if (dayData) {
                     const students: AttendanceStudent[] = [];
                     let present = 0, absent = 0, leave = 0;
                     
                     Object.entries(dayData).forEach(([studentId, studentData]) => {
-                        // Use absenceType for on leave, note for absent
-                        let reason = "";
-                        if (studentData.status === "on leave") {
-                            reason = studentData.absenceType || "";
-                        } else if (studentData.status === "absent") {
-                            reason = studentData.note || "";
-                        }
+                        // Use note field for all reasons (consistent with TakeAttendance)
+                        const reason = studentData.note || studentData.absenceType || "";
                         
                         students.push({
                             id: studentId,
                             name: studentData.name,
                             status: studentData.status,
-                            note: studentData.note,
+                            note: studentData.note || "",
                             reason: reason
                         });
                         
@@ -101,7 +101,12 @@ const AttendanceDataService = {
                     result.leave = leave;
                     result.total = students.length;
                     result.percentage = result.total ? Math.round((present / result.total) * 100) : 0;
+                    console.log(`Final result for ${classId} on ${date}:`, result);
+                } else {
+                    console.log(`No day data found for ${date} in ${classId}`);
                 }
+            } else {
+                console.log(`Monthly doc does not exist for ${classId} in month ${monthDocId}`);
             }
             
             // Cache the result

@@ -46,10 +46,17 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<Dayjs>(() => {
     const today = dayjs();
-    // If today is weekend, select next Monday
-    if (today.day() === 0) return today.add(1, 'day'); // Sunday -> Monday
-    if (today.day() === 6) return today.add(2, 'day'); // Saturday -> Monday
-    return today;
+    const dayOfWeek = today.day(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    // If today is weekend, select the most recent Friday
+    if (dayOfWeek === 0) { // Sunday
+      return today.subtract(2, 'day'); // Go back to Friday
+    }
+    if (dayOfWeek === 6) { // Saturday  
+      return today.subtract(1, 'day'); // Go back to Friday
+    }
+    
+    return today; // Weekday, use today
   });
   const [isWeekend, setIsWeekend] = useState(false);
   const [attendanceExists, setAttendanceExists] = useState(false);
