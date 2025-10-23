@@ -2,9 +2,25 @@ import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, serverTimestamp } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
+import { initializeApp } from "firebase/app";
 import { Plus, X } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
+
+// Firebase configuration for secondary app (same as main app)
+const firebaseConfig = {
+  apiKey: "AIzaSyCUMD_LPPeLjD3tQCgqYWYLqIvqg7MOi7E",
+  authDomain: "fyp1-89f1d.firebaseapp.com",
+  projectId: "fyp1-89f1d",
+  storageBucket: "fyp1-89f1d.firebasestorage.app",
+  messagingSenderId: "216309172405",
+  appId: "1:216309172405:web:bc626b69ed7018a63656fc",
+  measurementId: "G-C7M9R3NDN6",
+};
+
+// Create secondary Firebase app for user creation without affecting current auth state
+const secondaryApp = initializeApp(firebaseConfig, "secondary");
+const secondaryAuth = getAuth(secondaryApp);
 
 interface SubjectClass {
   subject: string;
@@ -216,8 +232,12 @@ function TeachersList() {
         throw new Error('Staff ID must be at least 6 characters long');
       }
 
-      const auth = getAuth();
-      const userCredential = await createUserWithEmailAndPassword(auth, email, staffId);
+      // Use secondary auth instance to avoid logging out current user
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, staffId);
+      
+      // Sign out from secondary auth immediately to avoid any side effects
+      await secondaryAuth.signOut();
+      
       return userCredential;
     } catch (error) {
       if (error instanceof Error) {
@@ -281,7 +301,7 @@ function TeachersList() {
           const userCredential = await createAuthAccount(editedTeacher.teacherEmail, editedTeacher.teacherID);
           const uid = userCredential.user.uid;
 
-          // Create staff document with teacherName as document ID
+          // Create staff document with teacherName as document ID using main db
           const staffRef = doc(db, "staff", editedTeacher.teacherName);
           const staffData = {
             teacherID: editedTeacher.teacherID,
