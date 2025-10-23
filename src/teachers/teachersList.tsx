@@ -1,9 +1,26 @@
 import { useEffect, useState, useCallback } from "react";
 import { db } from "../firebase";
-import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, getDoc, serverTimestamp } from "firebase/firestore";
-import { getAuth, createUserWithEmailAndPassword, updatePassword, deleteUser } from "firebase/auth";
+import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc, query, where, serverTimestamp } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+import { Plus, X } from "lucide-react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
+
+// Firebase configuration for secondary app (same as main app)
+const firebaseConfig = {
+  apiKey: "AIzaSyCUMD_LPPeLjD3tQCgqYWYLqIvqg7MOi7E",
+  authDomain: "fyp1-89f1d.firebaseapp.com",
+  projectId: "fyp1-89f1d",
+  storageBucket: "fyp1-89f1d.firebasestorage.app",
+  messagingSenderId: "216309172405",
+  appId: "1:216309172405:web:bc626b69ed7018a63656fc",
+  measurementId: "G-C7M9R3NDN6",
+};
+
+// Create secondary Firebase app for user creation without affecting current auth state
+const secondaryApp = initializeApp(firebaseConfig, "secondary");
+const secondaryAuth = getAuth(secondaryApp);
 
 interface SubjectClass {
   subject: string;
@@ -18,6 +35,12 @@ interface Teacher {
   teacherPhone: string;
   subjectClasses: SubjectClass[];
   role: 'teacher' | 'admin';
+}
+
+interface SubjectTemplate {
+  id: string;
+  subject: string;
+  createdAt: Date;
 }
 
 function TeachersList() {
@@ -35,13 +58,78 @@ function TeachersList() {
   const [selectedRole, setSelectedRole] = useState<'teacher' | 'admin'>('teacher');
   const [showCredentials, setShowCredentials] = useState(false);
   const [generatedCredentials, setGeneratedCredentials] = useState<{ email: string; password: string } | null>(null);
-  const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
+  
+  const [subjectTemplates, setSubjectTemplates] = useState<SubjectTemplate[]>([]);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [newSubject, setNewSubject] = useState("");
+  const [showSubjectSaved, setShowSubjectSaved] = useState(false);
 
   const classArray = ["3Y", "4Y", "5Y", "6Y"];
-  const subjectArray = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+  const defaultSubjects = ["English", "Mathematics", "Malay", "Chinese", "Science"];
+
+  // Load subject templates from localStorage
+  const loadSubjectTemplates = () => {
+    try {
+      const saved = localStorage.getItem('teacherSubjectTemplates');
+      if (saved) {
+        const templates = JSON.parse(saved).map((t: { id: string; subject: string; createdAt: string }) => ({
+          ...t,
+          createdAt: new Date(t.createdAt)
+        }));
+        setSubjectTemplates(templates);
+      } else {
+        // Initialize with default subjects
+        const defaultTemplates = defaultSubjects.map((subject, index) => ({
+          id: (index + 1).toString(),
+          subject: subject,
+          createdAt: new Date()
+        }));
+        setSubjectTemplates(defaultTemplates);
+        localStorage.setItem('teacherSubjectTemplates', JSON.stringify(defaultTemplates));
+      }
+    } catch (error) {
+      console.error('Error loading subject templates:', error);
+    }
+  };
+
+  // Save subject templates to localStorage
+  const saveSubjectTemplates = (templates: SubjectTemplate[]) => {
+    try {
+      localStorage.setItem('teacherSubjectTemplates', JSON.stringify(templates));
+      setSubjectTemplates(templates);
+    } catch (error) {
+      console.error('Error saving subject templates:', error);
+    }
+  };
+
+  // Add new subject template
+  const addSubjectTemplate = () => {
+    if (newSubject.trim()) {
+      const newTemplate: SubjectTemplate = {
+        id: Date.now().toString(),
+        subject: newSubject.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...subjectTemplates, newTemplate];
+      saveSubjectTemplates(updatedTemplates);
+      setNewSubject("");
+      
+      // Show brief notification
+      setShowSubjectSaved(true);
+      setTimeout(() => setShowSubjectSaved(false), 2000);
+    }
+  };
+
+  // Delete subject template
+  const deleteSubjectTemplate = (id: string) => {
+    const updatedTemplates = subjectTemplates.filter(t => t.id !== id);
+    saveSubjectTemplates(updatedTemplates);
+  };
+
+  // Get all available subjects (default + templates)
+  const getAllSubjects = () => {
+    return subjectTemplates.map(t => t.subject);
+  };
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -63,6 +151,7 @@ function TeachersList() {
 
   useEffect(() => {
     fetchTeachers();
+    loadSubjectTemplates();
   }, [fetchTeachers]);
 
   const handleTeacherClick = (teacher: Teacher) => {
@@ -76,6 +165,7 @@ function TeachersList() {
     setSelectedTeacher(null);
     setEditedTeacher(null);
     setIsEditing(false);
+    setIsAddMode(false);
     setError("");
     setSelectedUserType(null);
   };
@@ -142,8 +232,12 @@ function TeachersList() {
         throw new Error('Staff ID must be at least 6 characters long');
       }
 
-      const auth = getAuth();
-      const userCredential = await createUserWithEmailAndPassword(auth, email, staffId);
+      // Use secondary auth instance to avoid logging out current user
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, staffId);
+      
+      // Sign out from secondary auth immediately to avoid any side effects
+      await secondaryAuth.signOut();
+      
       return userCredential;
     } catch (error) {
       if (error instanceof Error) {
@@ -163,7 +257,14 @@ function TeachersList() {
 
       // Validate required fields
       if (!editedTeacher?.teacherName || !editedTeacher?.teacherEmail || !editedTeacher?.teacherPhone || !editedTeacher?.teacherID) {
-        setError("All fields are required");
+        setError("Please fill in all required fields: Name, Email, Phone, and ID");
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editedTeacher.teacherEmail)) {
+        setError("Please enter a valid email address");
         return;
       }
 
@@ -200,7 +301,7 @@ function TeachersList() {
           const userCredential = await createAuthAccount(editedTeacher.teacherEmail, editedTeacher.teacherID);
           const uid = userCredential.user.uid;
 
-          // Create staff document with teacherName as document ID
+          // Create staff document with teacherName as document ID using main db
           const staffRef = doc(db, "staff", editedTeacher.teacherName);
           const staffData = {
             teacherID: editedTeacher.teacherID,
@@ -270,8 +371,16 @@ function TeachersList() {
 
       // Refresh the list
       await fetchTeachers();
+      
+      // Reset all states after successful save
       setShowTeacherDetails(false);
       setShowCredentials(false);
+      setIsAddMode(false);
+      setIsEditing(false);
+      setEditedTeacher(null);
+      setSelectedTeacher(null);
+      setSelectedUserType(null);
+      setError("");
     } catch (error) {
       console.error("Error in handleSave:", error);
       if (error instanceof Error) {
@@ -342,70 +451,9 @@ function TeachersList() {
     });
   };
 
-  const handleUpdatePassword = async () => {
-    try {
-      setPasswordError("");
-      
-      if (!newPassword || !confirmPassword) {
-        setPasswordError("Please fill in all fields");
-        return;
-      }
+  
 
-      if (newPassword !== confirmPassword) {
-        setPasswordError("Passwords do not match");
-        return;
-      }
-
-      if (newPassword.length < 6) {
-        setPasswordError("Password must be at least 6 characters long");
-        return;
-      }
-
-      const staffRef = doc(db, "staff", editedTeacher!.teacherName);
-      const staffDoc = await getDoc(staffRef);
-      
-      if (!staffDoc.exists()) {
-        setPasswordError("Staff not found");
-        return;
-      }
-
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-
-      if (!currentUser) {
-        setPasswordError("No authenticated user found");
-        return;
-      }
-
-      // Update password for the current user
-      await updatePassword(currentUser, newPassword);
-      
-      // Update the password in Firestore
-      await updateDoc(staffRef, {
-        password: newPassword,
-        updatedAt: serverTimestamp()
-      });
-
-      setShowPasswordUpdate(false);
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordError("");
-      
-      // Show success message
-      alert("Password updated successfully!");
-    } catch (error) {
-      console.error("Error updating password:", error);
-      if (error instanceof Error) {
-        if (error.message.includes('auth/requires-recent-login')) {
-          setPasswordError("For security reasons, please log out and log in again before changing the password.");
-        } else {
-          setPasswordError(error.message);
-        }
-      } else {
-        setPasswordError("Failed to update password. Please try again.");
-      }
-    }
-  };
+ 
 
   if (loading) {
     return (
@@ -427,7 +475,7 @@ function TeachersList() {
         <div className="bg-white rounded shadow p-4">
           <div className="d-flex justify-content-between align-items-center mb-4">
             <div className="d-flex align-items-center gap-3">
-              <h2 className="h3 fw-bold m-0">Users List</h2>
+              <h2 className="h3 fw-bold m-0">Staff List</h2>
               <select 
                 className="form-select w-auto"
                 value={selectedRole}
@@ -437,7 +485,17 @@ function TeachersList() {
                 <option value="admin">Administrators</option>
               </select>
             </div>
-            <button className="btn btn-success" onClick={handleAddTeacherClick}>Add</button>
+            <div className="d-flex gap-2">
+              <button 
+                className="btn btn-info" 
+                onClick={() => setShowSubjectModal(true)}
+                title="Manage Subject Templates"
+              >
+                Manage Subjects
+              </button>
+             
+              <button className="btn btn-success" onClick={handleAddTeacherClick}>Add</button>
+            </div>
           </div>
 
           {/* User Type Selection Modal */}
@@ -545,6 +603,8 @@ function TeachersList() {
                   <div className="modal-body">
                     {error && <div className="alert alert-danger">{error}</div>}
                     
+                    
+                    
                     <div className="mb-3">
                       <label className="form-label fw-bold">ID:</label>
                       <input
@@ -561,7 +621,9 @@ function TeachersList() {
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Name</label>
+                      <label className="form-label">
+                        Name <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="text"
                         className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
@@ -569,14 +631,15 @@ function TeachersList() {
                         value={editedTeacher?.teacherName || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing && !isAddMode}
+                        disabled={!isAddMode}
+                        placeholder={isAddMode ? "Enter teacher name" : ""}
                       />
-                      {!isAddMode && (
-                        <div className="form-text text-muted">Name cannot be edited</div>
-                      )}
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Email</label>
+                      <label className="form-label">
+                        Email <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="email"
                         className={`form-control${!isEditing && !isAddMode ? ' bg-light' : ''}`}
@@ -584,14 +647,15 @@ function TeachersList() {
                         value={editedTeacher?.teacherEmail || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing && !isAddMode}
+                        disabled={!isAddMode}
+                        placeholder={isAddMode ? "Enter email address" : ""}
                       />
-                      {!isAddMode && (
-                        <div className="form-text text-muted">Email cannot be edited</div>
-                      )}
                     </div>
                     
                     <div className="mb-3">
-                      <label className="form-label">Phone</label>
+                      <label className="form-label">
+                        Phone <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="tel"
                         className={`form-control${!isEditing ? ' bg-light' : ''}`}
@@ -599,6 +663,7 @@ function TeachersList() {
                         value={editedTeacher?.teacherPhone || ""}
                         onChange={handleInputChange}
                         readOnly={!isEditing}
+                        placeholder={isAddMode ? "Enter phone number" : ""}
                       />
                     </div>
 
@@ -618,7 +683,7 @@ function TeachersList() {
                                   required
                                 >
                                   <option value="">Select Subject</option>
-                                  {subjectArray.map(subject => (
+                                  {getAllSubjects().map(subject => (
                                     <option key={subject} value={subject}>{subject}</option>
                                   ))}
                                 </select>
@@ -697,15 +762,7 @@ function TeachersList() {
                       </>
                     ) : (
                       <>
-                        {!isAddMode && (
-                          <button
-                            type="button"
-                            className="btn btn-outline-primary me-2"
-                            onClick={() => setShowPasswordUpdate(true)}
-                          >
-                            Change Password
-                          </button>
-                        )}
+                        
                         <button
                           type="button"
                           className="btn btn-primary me-2"
@@ -739,6 +796,12 @@ function TeachersList() {
                       setShowCredentials(false);
                       setShowTeacherDetails(false);
                       setGeneratedCredentials(null);
+                      setIsAddMode(false);
+                      setIsEditing(false);
+                      setEditedTeacher(null);
+                      setSelectedTeacher(null);
+                      setSelectedUserType(null);
+                      setError("");
                     }}></button>
                   </div>
                   <div className="modal-body">
@@ -759,6 +822,12 @@ function TeachersList() {
                         setShowCredentials(false);
                         setShowTeacherDetails(false);
                         setGeneratedCredentials(null);
+                        setIsAddMode(false);
+                        setIsEditing(false);
+                        setEditedTeacher(null);
+                        setSelectedTeacher(null);
+                        setSelectedUserType(null);
+                        setError("");
                       }}
                     >
                       Close
@@ -769,67 +838,101 @@ function TeachersList() {
             </div>
           )}
 
-          {/* Password Update Modal */}
-          {showPasswordUpdate && (
-            <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
-              <div className="modal-dialog modal-dialog-centered">
+          
+
+          {/* Subject Saved Notification */}
+          {showSubjectSaved && (
+            <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
+              <div className="toast show" role="alert">
+                <div className="toast-body">
+                  New subject has been added to your templates.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Subject Template Modal */}
+          {showSubjectModal && (
+            <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <div className="modal-dialog modal-lg">
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Change Password</h5>
+                    <h5 className="modal-title">Subject Management</h5>
                     <button
                       type="button"
                       className="btn-close"
                       onClick={() => {
-                        setShowPasswordUpdate(false);
-                        setNewPassword("");
-                        setConfirmPassword("");
-                        setPasswordError("");
+                        setShowSubjectModal(false);
+                        setNewSubject("");
                       }}
                     ></button>
                   </div>
                   <div className="modal-body">
-                    {passwordError && <div className="alert alert-danger">{passwordError}</div>}
-                    <div className="mb-3">
-                      <label className="form-label">New Password</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                      />
-                      <div className="form-text">Password must be at least 6 characters long</div>
+                    {/* Add New Subject */}
+                    <div className="mb-4">
+                      <label className="form-label">Add New Subject</label>
+                      <div className="d-flex gap-2">
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={newSubject}
+                          onChange={(e) => setNewSubject(e.target.value)}
+                          placeholder="Enter subject name"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              addSubjectTemplate();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={addSubjectTemplate}
+                          disabled={!newSubject.trim()}
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="mb-3">
-                      <label className="form-label">Confirm New Password</label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
-                      />
+
+                    {/* Existing Subjects */}
+                    <div>
+                      <label className="form-label">Available Subjects</label>
+                      <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                        {subjectTemplates.length === 0 ? (
+                          <div className="text-muted text-center py-3">
+                            No subjects available. Add your first subject above.
+                          </div>
+                        ) : (
+                          subjectTemplates.map((template) => (
+                            <div
+                              key={template.id}
+                              className="list-group-item d-flex justify-content-between align-items-center"
+                            >
+                              <span>{template.subject}</span>
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => deleteSubjectTemplate(template.id)}
+                                title="Delete subject"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="modal-footer">
                     <button
                       type="button"
-                      className="btn btn-secondary me-2"
+                      className="btn btn-secondary"
                       onClick={() => {
-                        setShowPasswordUpdate(false);
-                        setNewPassword("");
-                        setConfirmPassword("");
-                        setPasswordError("");
+                        setShowSubjectModal(false);
+                        setNewSubject("");
                       }}
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={handleUpdatePassword}
-                    >
-                      Update Password
+                      Close
                     </button>
                   </div>
                 </div>

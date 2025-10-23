@@ -3,15 +3,22 @@
 import { useState, useEffect } from "react"
 import {
   Typography, Button, Select, MenuItem,
-  FormControl, InputLabel, Avatar
+  FormControl, InputLabel, Avatar,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, FormControlLabel, Checkbox,
+  
 } from "@mui/material"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
-import SaveIcon from "@mui/icons-material/Save"
 import GroupIcon from "@mui/icons-material/Group"
 import { Link } from "react-router-dom"
 import { db } from "../firebase"
-import { collection, getDocs, doc, setDoc } from "firebase/firestore"
+import { collection, getDocs, doc, setDoc, getDoc } from "firebase/firestore"
 import "./TakeAttendance.css"
+import AttendanceDataService from './attendanceService'
+import { DatePicker } from '@mui/x-date-pickers/DatePicker'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import dayjs, { Dayjs } from 'dayjs'
 
 // Interface for class data
 interface ClassData {
@@ -28,13 +35,36 @@ interface StudentData {
   photo?: string;
 }
 
+
 export default function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState("")
   const [attendance, setAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({})
+  const [attendanceReasons, setAttendanceReasons] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
   const [classes, setClasses] = useState<ClassData[]>([])
   const [students, setStudents] = useState<StudentData[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState<Dayjs>(() => {
+    const today = dayjs();
+    const dayOfWeek = today.day(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    // If today is weekend, select the most recent Friday
+    if (dayOfWeek === 0) { // Sunday
+      return today.subtract(2, 'day'); // Go back to Friday
+    }
+    if (dayOfWeek === 6) { // Saturday  
+      return today.subtract(1, 'day'); // Go back to Friday
+    }
+    
+    return today; // Weekday, use today
+  });
+  const [isWeekend, setIsWeekend] = useState(false);
+  const [attendanceExists, setAttendanceExists] = useState(false);
+  const [originalAttendance, setOriginalAttendance] = useState<Record<string, "present" | "absent" | "on leave">>({});
+  const [absentDialogOpen, setAbsentDialogOpen] = useState(false);
+  const [selectedStudentForAbsent, setSelectedStudentForAbsent] = useState<string | null>(null);
+  const [absentReason, setAbsentReason] = useState("");
+  const [hasAbsentReason, setHasAbsentReason] = useState(false);
 
   // Fetch classes from database
   useEffect(() => {
@@ -107,51 +137,184 @@ export default function AttendancePage() {
     fetchStudents()
   }, [selectedClass])
 
+  // Fetch existing attendance for selected class and date
+  useEffect(() => {
+    const fetchExistingAttendance = async () => {
+      if (!selectedClass || !selectedDate) {
+        setAttendance({});
+        setOriginalAttendance({});
+        setAttendanceExists(false);
+        return;
+      }
+      const dateString = selectedDate.format('YYYY-MM-DD');
+      const monthString = selectedDate.format('YYYY-MM');
+      
+      // Clear cache for this class and date to ensure fresh data
+      AttendanceDataService.clearCacheForClass(selectedClass, dateString);
+      
+      try {
+        // Fetch from the new structure: attendance/{classId}/months/{year-month}
+        const monthlyDocRef = doc(db, "attendance", selectedClass, "months", monthString);
+        const monthlyDoc = await getDoc(monthlyDocRef);
+        
+        if (monthlyDoc.exists()) {
+          const data = monthlyDoc.data();
+          const dayData = data[dateString];
+          
+          if (dayData) {
+            // Attendance exists, pre-fill
+            const att: Record<string, "present" | "absent" | "on leave"> = {};
+            const reasons: Record<string, string> = {};
+            Object.entries(dayData).forEach(([studentId, studentData]) => {
+              const data = studentData as { status: string; name: string; note?: string; absenceType?: string; reason?: string };
+              att[studentId] = data.status as "present" | "absent" | "on leave";
+              
+              if (data.absenceType) {
+                reasons[studentId] = data.absenceType;
+              } else if (data.note) {
+                reasons[studentId] = data.note;
+              }
+            });
+            setAttendance(att);
+            setAttendanceReasons(reasons);
+            setOriginalAttendance(att);
+            setAttendanceExists(true);
+          } else {
+            setAttendance({});
+            setAttendanceReasons({});
+            setOriginalAttendance({});
+            setAttendanceExists(false);
+          }
+        } else {
+          setAttendance({});
+          setAttendanceReasons({});
+          setOriginalAttendance({});
+          setAttendanceExists(false);
+        }
+      } catch (error) {
+        console.error("Error fetching existing attendance:", error);
+        setAttendance({});
+        setAttendanceReasons({});
+        setOriginalAttendance({});
+        setAttendanceExists(false);
+      }
+    };
+    fetchExistingAttendance();
+  }, [selectedClass, selectedDate]);
+
   const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "on leave") => {
-    setAttendance((prev) => ({
-      ...prev,
-      [studentId]: status,
-    }))
+    if (status === "absent") {
+      setSelectedStudentForAbsent(studentId);
+      setAbsentReason("");
+      setHasAbsentReason(false);
+      setAbsentDialogOpen(true);
+    } else {
+      setAttendance((prev) => ({
+        ...prev,
+        [studentId]: status,
+      }));
+      // Clear reason if changing from absent to other status
+      if (attendanceReasons[studentId]) {
+        setAttendanceReasons((prev) => {
+          const newReasons = { ...prev };
+          delete newReasons[studentId];
+          return newReasons;
+        });
+      }
+    }
+  }
+
+  const handleAbsentDialogConfirm = () => {
+    if (selectedStudentForAbsent) {
+      setAttendance((prev) => ({
+        ...prev,
+        [selectedStudentForAbsent]: "absent",
+      }));
+      
+      if (hasAbsentReason && absentReason.trim()) {
+        setAttendanceReasons((prev) => ({
+          ...prev,
+          [selectedStudentForAbsent]: absentReason.trim(),
+        }));
+      } else {
+        setAttendanceReasons((prev) => ({
+          ...prev,
+          [selectedStudentForAbsent]: "No reason provided",
+        }));
+      }
+    }
+    
+    setAbsentDialogOpen(false);
+    setSelectedStudentForAbsent(null);
+    setAbsentReason("");
+    setHasAbsentReason(false);
+  }
+
+  const handleAbsentDialogCancel = () => {
+    setAbsentDialogOpen(false);
+    setSelectedStudentForAbsent(null);
+    setAbsentReason("");
+    setHasAbsentReason(false);
+  }
+
+  const handleMarkAllPresent = () => {
+    if (!selectedClass || students.length === 0) return;
+    
+    // Mark all students as present except those on leave
+    const newAttendance = { ...attendance };
+    const newReasons = { ...attendanceReasons };
+    
+    students.forEach(student => {
+      if (newAttendance[student.id] !== "on leave") {
+        newAttendance[student.id] = "present";
+        // Clear any existing reasons for students being marked present
+        if (newReasons[student.id]) {
+          delete newReasons[student.id];
+        }
+      }
+    });
+    
+    setAttendance(newAttendance);
+    setAttendanceReasons(newReasons);
   }
 
   const handleSaveAttendance = async () => {
     setIsSaving(true)
     try {
-      // Get current date in yyyy-mm-dd format
-      const today = new Date()
-      const dateString = today.toISOString().split('T')[0]
-      
-      // Ensure class ID is stored as clean string without any formatting
-      
-
+      // Use selected date in yyyy-mm-dd format
+      const dateString = selectedDate.format('YYYY-MM-DD');
+      const monthString = selectedDate.format('YYYY-MM'); // For the 'months' sub-collection
       
       // Save attendance for each student
-      const savePromises = Object.entries(attendance).map(async ([studentId, status]) => {
-        const student = students.find(s => s.id === studentId)
-        if (!student) return
+      const attendanceForDay: Record<string, { status: string; name: string; note: string; timestamp: string }> = {};
+      Object.entries(attendance).forEach(([studentId, status]) => {
+        const student = students.find(s => s.id === studentId);
+        if (student) {
+          const reason = attendanceReasons[studentId] || '';
+          attendanceForDay[studentId] = {
+            status,
+            name: student.name,
+            note: reason,
+            timestamp: selectedDate.toISOString()
+          };
+        }
+      });
+      await setDoc(
+        doc(db, "attendance", selectedClass, "months", monthString),
+        {
+          [dateString]: attendanceForDay
+        },
+        { merge: true }
+      );
       
-        
-        console.log("Saving to path:", `attendance/${selectedClass}/${dateString}/${studentId}`)
-
-       const studentDocRef = doc(
-          db,
-          "attendance",
-          selectedClass,   // "3Y" (collection)
-          dateString,      // "2025-07-02" (collection)
-          studentId        // doc
-        );
-        await setDoc(studentDocRef, {
-          studentId: studentId,
-          name: student.name,
-          status: status,
-          timestamp: today.toISOString()
-        })
-      })
-      await Promise.all(savePromises)
+      // Clear cache for this class and month to ensure fresh data
+      AttendanceDataService.clearCacheForMonth(selectedClass, monthString);
+      
+      // Update the original attendance to reflect the saved state
+      setOriginalAttendance({...attendance});
+      setAttendanceExists(true);
+      
       alert("Attendance saved successfully!")
-      
-      // Reset attendance after saving
-      setAttendance({})
     } catch (error) {
       console.error("Error saving attendance:", error)
       alert("Error saving attendance. Please try again.")
@@ -170,6 +333,15 @@ export default function AttendancePage() {
 
   const stats = getAttendanceStats()
 
+  const isAttendanceModified = () => {
+    const keys = Object.keys(originalAttendance);
+    if (keys.length !== Object.keys(attendance).length) return true;
+    for (const key of keys) {
+      if (attendance[key] !== originalAttendance[key]) return true;
+    }
+    return false;
+  };
+
   if (loading && classes.length === 0) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
@@ -179,19 +351,76 @@ export default function AttendancePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
+      {/* Back Button - Outside the main wrapper */}
+      <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px 24px 0 24px" }}>
+        <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
+          Back
+        </Button>
+      </div>
+      
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
-          <Button component={Link} to="/attendance/AttendanceMain" variant="outlined" size="small" startIcon={<ArrowBackIcon />}>
-            Back
-          </Button>
-          <div>
-            <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
-            <Typography color="textSecondary">
-              Mark attendance for today - {new Date().toLocaleDateString()}
-            </Typography>
+        <div style={{ 
+          background: "#fff", 
+          borderRadius: "12px", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+          padding: "32px",
+          minHeight: "calc(100vh - 48px)"
+        }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div>
+                <Typography variant="h4" fontWeight="bold">Take Attendance</Typography>
+                <Typography color="textSecondary">
+                  Mark attendance for selected date
+                </Typography>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <Typography variant="h6" fontWeight="bold" color="primary">
+                {selectedDate.format('dddd, MMMM D, YYYY')}
+              </Typography>
+             
+            </div>
           </div>
+        {/* Date Picker */}
+        <div style={{ marginBottom: 24 }}>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <DatePicker
+              label="Select Date"
+              value={selectedDate}
+              onChange={(newValue) => {
+                if (newValue) {
+                  const dayOfWeek = newValue.day();
+                  if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    setSelectedDate(newValue);
+                    setIsWeekend(false);
+                  } else {
+                    setIsWeekend(true);
+                  }
+                }
+              }}
+              shouldDisableDate={(date) => {
+                // Disable weekends (Saturday = 6, Sunday = 0)
+                const dayOfWeek = date.day();
+                return dayOfWeek === 0 || dayOfWeek === 6;
+              }}
+              slotProps={{
+                textField: {
+                  variant: "outlined",
+                  size: "small",
+                  sx: { minWidth: 200 },
+                  helperText: isWeekend ? "Weekends are not available for attendance" : "Only weekdays (Monday to Friday) are available"
+                }
+              }}
+            />
+          </LocalizationProvider>
+          {isWeekend && (
+            <Typography variant="body2" color="warning.main" style={{ marginTop: 8 }}>
+              ⚠️ School is closed on weekends. Please select a weekday to take attendance.
+            </Typography>
+          )}
         </div>
 
         {/* Class Selection */}
@@ -292,11 +521,28 @@ export default function AttendancePage() {
               padding: "16px"
             }}>
               <div style={{ marginBottom: "16px" }}>
-                <Typography variant="h6">Student Attendance</Typography>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <Typography variant="h6">Student Attendance</Typography>
+                  <Button
+                    onClick={handleMarkAllPresent}
+                    disabled={students.length === 0 || isWeekend}
+                    variant="contained"
+                    color="success"
+                    size="small"
+                  >
+                    Mark All Present
+                  </Button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                
+                
+                
+              </div>
                 <Typography variant="body2" color="text.secondary">
                   Mark attendance for {classes.find((c) => c.id === selectedClass)?.name}
                 </Typography>
               </div>
+              
               {loading ? (
                 <div style={{ display: "flex", justifyContent: "center", padding: "24px" }}>
                   <Typography>Loading students...</Typography>
@@ -332,6 +578,14 @@ export default function AttendancePage() {
                           <Typography variant="body2" color="text.secondary">
                             Student ID: {student.studentID}
                           </Typography>
+                          {attendanceReasons[student.id] && (
+                            <Typography variant="body2" color="text.secondary" style={{ fontStyle: 'italic', marginTop: '4px' }}>
+                              {attendance[student.id] === "on leave" 
+                                ? `Reason: ${attendanceReasons[student.id]}`
+                                : `Reason: ${attendanceReasons[student.id]}`
+                              }
+                            </Typography>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: "8px" }}>
@@ -340,24 +594,34 @@ export default function AttendancePage() {
                           color="success"
                           size="small"
                           onClick={() => handleAttendanceChange(student.id, "present")}
+                          disabled={attendance[student.id] === "on leave"}
                         >
                           Present
                         </Button>
-                        <Button
-                          variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
-                          color="warning"
-                          size="small"
-                          onClick={() => handleAttendanceChange(student.id, "on leave")}
-                        >
-                          On Leave
-                        </Button>
+                       
                         <Button
                           variant={attendance[student.id] === "absent" ? "contained" : "outlined"}
                           color="error"
                           size="small"
                           onClick={() => handleAttendanceChange(student.id, "absent")}
+                          disabled={attendance[student.id] === "on leave"}
                         >
                           Absent
+                        </Button>
+                        
+                        <Button
+                          variant={attendance[student.id] === "on leave" ? "contained" : "outlined"}
+                          color="warning"
+                          size="small"
+                          onClick={() => handleAttendanceChange(student.id, "on leave")}
+                          disabled={attendance[student.id] !== "on leave"}
+                          style={{
+                            backgroundColor: attendance[student.id] === "on leave" ? "#ff9800" : undefined,
+                            color: attendance[student.id] === "on leave" ? "white" : undefined,
+                            opacity: attendance[student.id] === "on leave" ? 1 : 0.5
+                          }}
+                        >
+                          On Leave
                         </Button>
                       </div>
                     </div>
@@ -366,24 +630,74 @@ export default function AttendancePage() {
               )}
 
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                
+                
                 <Button
                   onClick={handleSaveAttendance}
                   disabled={
                     isSaving ||
                     students.length === 0 ||
-                    Object.keys(attendance).length !== students.length
+                    Object.keys(attendance).length !== students.length ||
+                    (attendanceExists && !isAttendanceModified()) ||
+                    isWeekend
                   }
-                  startIcon={<SaveIcon />}
                   variant="contained"
                   color="primary"
                 >
-                  {isSaving ? "Saving..." : "Save Attendance"}
+                  {isWeekend 
+                    ? "Cannot Save on Weekend"
+                    : isSaving
+                    ? (attendanceExists ? "Updating..." : "Saving...")
+                    : (attendanceExists ? "Update Attendance" : "Save Attendance")}
                 </Button>
               </div>
             </div>
           </>
         )}
+        </div>
       </div>
+
+      {/* Absent Reason Dialog */}
+      <Dialog open={absentDialogOpen} onClose={handleAbsentDialogCancel} maxWidth="sm" fullWidth>
+        <DialogTitle>Mark Student as Absent</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" style={{ marginBottom: '16px' }}>
+            Is there a specific reason for the student's absence?
+          </Typography>
+          
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={hasAbsentReason}
+                onChange={(e) => setHasAbsentReason(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="Yes, provide a reason"
+          />
+          
+          {hasAbsentReason && (
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Reason for absence"
+              value={absentReason}
+              onChange={(e) => setAbsentReason(e.target.value)}
+              placeholder="Please provide the reason for absence..."
+              style={{ marginTop: '16px' }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleAbsentDialogCancel} color="secondary">
+            Cancel
+          </Button>
+          <Button onClick={handleAbsentDialogConfirm} color="primary" variant="contained">
+            Mark Absent
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }

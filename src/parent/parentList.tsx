@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
-import ChangePassword from "../auth/changePassword";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 interface Parent {
@@ -28,7 +27,6 @@ function ParentList() {
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [selectedParent, setSelectedParent] = useState<ParentWithClass | null>(null);
   const [showParentDetails, setShowParentDetails] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedParent, setEditedParent] = useState<ParentWithClass | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -156,15 +154,7 @@ function ParentList() {
     }
   };
 
-  const handleChangePassword = () => {
-    setShowChangePassword(true);
-  };
-
-  const handlePasswordChangeSuccess = () => {
-    setShowChangePassword(false);
-    setShowParentDetails(false);
-    alert("Password updated successfully!");
-  };
+  
 
   if (loading) {
     return (
@@ -289,6 +279,7 @@ function ParentList() {
                             name="name"
                             value={editedParent?.name || ""}
                             onChange={handleInputChange}
+                            disabled
                           />
                         </div>
                         <div className="mb-3">
@@ -300,6 +291,7 @@ function ParentList() {
                             name="email"
                             value={editedParent?.email || ""}
                             onChange={handleInputChange}
+                            disabled
                           />
                         </div>
                         <div className="mb-3">
@@ -370,13 +362,6 @@ function ParentList() {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-warning me-2"
-                          onClick={handleChangePassword}
-                        >
-                          Change Password
-                        </button>
-                        <button
-                          type="button"
                           className="btn btn-secondary"
                           onClick={handleCloseDetails}
                         >
@@ -390,15 +375,7 @@ function ParentList() {
             </div>
           )}
 
-          {/* Change Password Modal */}
-          {showChangePassword && selectedParent && (
-            <ChangePassword
-              userId={selectedParent.parentId}
-              userEmail={selectedParent.email}
-              onSuccess={handlePasswordChangeSuccess}
-              onCancel={() => setShowChangePassword(false)}
-            />
-          )}
+          
 
           {selectedClass && (!parentsByClass[selectedClass] || parentsByClass[selectedClass].length === 0) && (
             <div className="text-center text-muted py-4">

@@ -2,12 +2,11 @@ import React, { useState, useEffect } from "react";
 import {
   Plus,
   Trash2,
-  Receipt,
-  Save,
   Users,
   Search,
   CheckCircle2,
-  Calendar,
+
+  X,
 } from "lucide-react";
 import { db } from "../firebase";
 import {
@@ -16,7 +15,10 @@ import {
   getDocs,
   query,
   setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
+import axios from "axios";
+import { sendPushNotification } from "../notifications/pushyClient";
 
 interface Student {
   class_id: string;
@@ -32,60 +34,138 @@ interface Student {
   parentPhone: string;
   parentEmail: string;
 }
+
 interface Bill {
   studentName: string;
   studentId: string;
+  classId: string;
   items: BillItem[];
   totalAmount: number;
   billDate: string;
   dueDate: string;
-  duePeriod: number;
-  reference: string;
+  dueDateTerm: string;
   billNumber: string;
+  parentEmail?: string;
+  parentId: string;
+  parentName: string;
 }
 
 interface BillItem {
   id: number;
   description: string;
-  amount: number;
+  amount: string | number;
 }
 
 interface FormData {
   billDate: string;
-  duePeriod: number;
-  dueDate: string;
-  reference: string;
+  dueDateTerm: string;
   billNumber: string;
+}
+
+interface DescriptionTemplate {
+  id: string;
+  description: string;
+  createdAt: Date;
 }
 
 function CreateBill() {
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]); // Store student IDs
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectWholeClass, setSelectWholeClass] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<BillItem[]>([
-    { id: 1, description: "Tuition Fee", amount: 0 },
+    { id: 1, description: "Tuition Fee", amount: "" },
   ]);
   const [formData, setFormData] = useState<FormData>({
     billDate: new Date().toISOString().split("T")[0],
-    duePeriod: 14, // Default to 14 days
-    dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
-    reference: "",
-    billNumber: `${new Date().getFullYear()}-${Math.floor(
-      Math.random() * 100
-    )}-${Math.floor(Math.random() * 100)}`,
+    dueDateTerm: "7",
+    billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
   });
-  const [, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [descriptionTemplates, setDescriptionTemplates] = useState<DescriptionTemplate[]>([]);
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [newDescription, setNewDescription] = useState("");
+  const [customInputs, setCustomInputs] = useState<{ [key: number]: string }>({});
+  const [showTemplateSaved, setShowTemplateSaved] = useState(false);
 
-  // Function to calculate due date based on bill date and due period
-  function calculateDueDate(billDate: string, duePeriod: number): string {
-    const date = new Date(billDate);
-    date.setDate(date.getDate() + duePeriod);
-    return date.toISOString().split("T")[0];
-  }
+  // Calculate due date based on term
+  const calculateDueDate = (billDate: string, term: string): string => {
+    const billDateObj = new Date(billDate);
+    const days = parseInt(term);
+    const dueDateObj = new Date(billDateObj.getTime() + (days * 24 * 60 * 60 * 1000));
+    return dueDateObj.toISOString().split("T")[0];
+  };
+
+  // Format date to dd/mm/yyyy
+  const formatDateToDDMMYYYY = (dateString: string): string => {
+    const date = new Date(dateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Load description templates from localStorage
+  const loadDescriptionTemplates = () => {
+    try {
+      const saved = localStorage.getItem('billDescriptionTemplates');
+      if (saved) {
+        const templates = JSON.parse(saved).map((t: { id: string; description: string; createdAt: string }) => ({
+          ...t,
+          createdAt: new Date(t.createdAt)
+        }));
+        setDescriptionTemplates(templates);
+      } else {
+        // Initialize with default templates
+        const defaultTemplates = [
+          { id: '1', description: 'Tuition Fee', createdAt: new Date() },
+          { id: '2', description: 'Registration Fee', createdAt: new Date() },
+          { id: '3', description: 'Transportation Fee', createdAt: new Date() },
+          { id: '4', description: 'Meal Fee', createdAt: new Date() },
+          { id: '5', description: 'Activity Fee', createdAt: new Date() },
+        ];
+        setDescriptionTemplates(defaultTemplates);
+        localStorage.setItem('billDescriptionTemplates', JSON.stringify(defaultTemplates));
+      }
+    } catch (error) {
+      console.error('Error loading description templates:', error);
+    }
+  };
+
+  // Save description templates to localStorage
+  const saveDescriptionTemplates = (templates: DescriptionTemplate[]) => {
+    try {
+      localStorage.setItem('billDescriptionTemplates', JSON.stringify(templates));
+      setDescriptionTemplates(templates);
+    } catch (error) {
+      console.error('Error saving description templates:', error);
+    }
+  };
+
+  // Add new description template
+  const addDescriptionTemplate = () => {
+    if (newDescription.trim()) {
+      const newTemplate: DescriptionTemplate = {
+        id: Date.now().toString(),
+        description: newDescription.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...descriptionTemplates, newTemplate];
+      saveDescriptionTemplates(updatedTemplates);
+      setNewDescription("");
+    }
+  };
+
+  // Delete description template
+  const deleteDescriptionTemplate = (id: string) => {
+    const updatedTemplates = descriptionTemplates.filter(t => t.id !== id);
+    saveDescriptionTemplates(updatedTemplates);
+  };
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -93,11 +173,9 @@ function CreateBill() {
         setLoading(true);
         console.log("Starting to fetch classes...");
 
-        // Create a direct query to list all documents
         const q = query(collection(db, "classes"));
         const querySnapshot = await getDocs(q);
 
-        // Log each document found
         querySnapshot.forEach((doc) => {
           console.log("Found document:", {
             id: doc.id,
@@ -107,11 +185,9 @@ function CreateBill() {
           });
         });
 
-        // Get all class IDs
         const allClasses = querySnapshot.docs.map((doc) => doc.id);
         console.log("All class IDs before sorting:", allClasses);
 
-        // Sort and set the classes
         const classesData = allClasses.sort((a, b) => a.localeCompare(b));
         console.log("Final sorted classes:", classesData);
 
@@ -128,6 +204,7 @@ function CreateBill() {
           message: error instanceof Error ? error.message : "Unknown error",
           type: error instanceof Error ? error.constructor.name : typeof error,
         });
+        setError("Failed to load classes. Please try again.");
         alert("Failed to load classes. Please try again.");
       } finally {
         setLoading(false);
@@ -135,6 +212,7 @@ function CreateBill() {
     };
 
     fetchData();
+    loadDescriptionTemplates();
   }, []);
 
   const handleClassSelection = async (
@@ -149,7 +227,6 @@ function CreateBill() {
 
     if (selectedClassName) {
       try {
-        // Get students from the selected class's student subcollection
         const studentsRef = collection(
           db,
           "classes",
@@ -158,7 +235,6 @@ function CreateBill() {
         );
         const studentsSnapshot = await getDocs(studentsRef);
 
-        // Log the raw student data
         console.log(
           "Raw students snapshot:",
           studentsSnapshot.docs.map((doc) => ({
@@ -186,6 +262,7 @@ function CreateBill() {
         setStudents(studentsData);
       } catch (error) {
         console.error("Detailed error fetching students:", error);
+        setError("Failed to load students. Please try again.");
         alert("Failed to load students. Please try again.");
       }
     }
@@ -221,7 +298,7 @@ function CreateBill() {
     const newItem = {
       id: Math.max(0, ...items.map((item) => item.id)) + 1,
       description: "",
-      amount: 0,
+      amount: "",
     };
     setItems([...items, newItem]);
   };
@@ -235,16 +312,56 @@ function CreateBill() {
     field: keyof BillItem,
     value: string
   ) => {
+    if (field === "description" && value === "__custom__") {
+      // Show custom input for this item
+      setCustomInputs(prev => ({ ...prev, [id]: "" }));
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id
+            ? { ...item, description: "" }
+            : item
+        )
+      );
+    } else {
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                [field]: field === "amount" ? value : value,
+              }
+            : item
+        )
+      );
+    }
+  };
+
+  const handleCustomInputChange = (id: number, value: string) => {
+    setCustomInputs(prev => ({ ...prev, [id]: value }));
     setItems((prevItems) =>
       prevItems.map((item) =>
         item.id === id
-          ? {
-              ...item,
-              [field]: field === "amount" ? parseFloat(value) || 0 : value,
-            }
+          ? { ...item, description: value }
           : item
       )
     );
+  };
+
+  const handleCustomInputBlur = (value: string) => {
+    // When user finishes typing a custom description, save it as a template
+    if (value.trim() && !descriptionTemplates.some(t => t.description.toLowerCase() === value.toLowerCase())) {
+      const newTemplate: DescriptionTemplate = {
+        id: Date.now().toString(),
+        description: value.trim(),
+        createdAt: new Date()
+      };
+      const updatedTemplates = [...descriptionTemplates, newTemplate];
+      saveDescriptionTemplates(updatedTemplates);
+      
+      // Show brief notification
+      setShowTemplateSaved(true);
+      setTimeout(() => setShowTemplateSaved(false), 2000);
+    }
   };
 
   const handleFormChange = (
@@ -252,52 +369,44 @@ function CreateBill() {
   ) => {
     const { name, value } = e.target;
     
-    // Update the form data
-    setFormData((prev) => {
-      const newFormData = { ...prev, [name]: value };
-      
-      // If bill date or due period changes, recalculate the due date
-      if (name === "billDate" || name === "duePeriod") {
-        const duePeriod = name === "duePeriod" ? Number(value) : prev.duePeriod;
-        const billDate = name === "billDate" ? value : prev.billDate;
-        newFormData.dueDate = calculateDueDate(billDate, duePeriod);
-      }
-      
-      return newFormData;
-    });
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
-
+  
     try {
       if (selectedStudentIds.length === 0) {
         alert("Please select at least one student");
         return;
       }
-
-      if (!items.some((item) => item.amount > 0)) {
+  
+      if (!items.some(item => Number(item.amount) > 0)) {
         alert("Please add at least one item with an amount");
         return;
       }
-
-      // Group students by parent ID to avoid duplicate notifications
+  
       const parentBills: { [parentId: string]: Bill[] } = {};
-
-      // Create bills and group them by parent
+  
       for (const studentId of selectedStudentIds) {
-        const student = students.find((s) => s.id === studentId);
+        const student = students.find(s => s.id === studentId);
         if (!student) continue;
-
-        // Create bill document
+  
         const billDocRef = doc(collection(db, "bills"));
+        const calculatedDueDate = calculateDueDate(formData.billDate, formData.dueDateTerm);
         const billData = {
+          billId: billDocRef.id,
           billNumber: formData.billNumber,
           billDate: formData.billDate,
-          duePeriod: formData.duePeriod,
-          dueDate: formData.dueDate,
-          reference: formData.reference,
+          dueDate: calculatedDueDate,
+          dueDateTerm: formData.dueDateTerm,
           items: items,
           totalAmount: total,
           paymentStatus: "unpaid",
@@ -309,60 +418,108 @@ function CreateBill() {
           parentName: student.parentName,
           parentEmail: student.parentEmail,
         };
-
+  
         await setDoc(billDocRef, billData);
-
-        // Group bills by parent
-        if (!parentBills[student.parentId]) {
-          parentBills[student.parentId] = [];
-        }
+  
+        if (!parentBills[student.parentId]) parentBills[student.parentId] = [];
         parentBills[student.parentId].push(billData);
       }
-
-      // Create notifications for each parent
+  
+      // 3️⃣ Create a Firestore notification per parent so mobile app can show it
       for (const [parentId, bills] of Object.entries(parentBills)) {
-        const notificationRef = doc(collection(db, "notifications"));
-        await setDoc(notificationRef, {
-          createdAt: new Date(),
-          parentId: parentId,
-          type: "new_bill",
-          isRead: false,
-          billCount: bills.length,
-          totalAmount: bills.reduce((sum: number, bill) => sum + bill.totalAmount, 0),
-          message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
-          bills: bills.map((bill) => ({
-            billNumber: bill.billNumber,
-            amount: bill.totalAmount,
-            studentName: bill.studentName,
-            dueDate: bill.dueDate,
-            billDate: bill.billDate,
-          })),
-        });
+        try {
+          const totalForParent = bills.reduce((sum, b) => sum + b.totalAmount, 0);
+          const notificationDocRef = doc(collection(db, "notifications"));
+          const notificationRecord = {
+            type: "new_bill",
+            parentId,
+            isRead: false,
+            createdAt: serverTimestamp(),
+            message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
+            billCount: bills.length,
+            totalAmount: totalForParent,
+            // Add student data for single bill notifications
+            studentName: bills.length === 1 ? bills[0].studentName : undefined,
+            studentId: bills.length === 1 ? bills[0].studentId : undefined,
+            classId: bills.length === 1 ? bills[0].classId : undefined,
+            billDate: bills.length === 1 ? bills[0].billDate : undefined,
+            dueDate: bills.length === 1 ? bills[0].dueDate : undefined,
+            bills: bills.map((b) => ({
+              amount: b.totalAmount,
+              billDate: b.billDate,
+              billNumber: b.billNumber,
+              dueDate: b.dueDate,
+              dueDateTerm: b.dueDateTerm,
+              studentName: b.studentName,
+              studentId: b.studentId,
+              classId: b.classId,
+            })),
+          };
+          await setDoc(notificationDocRef, notificationRecord);
+        } catch (err) {
+          console.error("❌ Failed to save notification record:", err);
+          // Continue even if notification record write fails
+        }
       }
-      
-      alert("Bills created and notifications sent successfully!");
 
-      // Reset form
+      let notificationSuccess = false;
+
+      try {
+        const results = await Promise.all(
+          Object.entries(parentBills).map(([parentId, bills]) =>
+            sendPushNotification(db, {
+              parentId,
+              message: `You have ${bills.length} new bill${bills.length > 1 ? "s" : ""} to review`,
+              type: "new_bill",
+              totalAmount: bills.reduce((sum, bill) => sum + bill.totalAmount, 0),
+              billCount: bills.length,
+              parentEmail: bills[0]?.parentEmail,
+              entityId: bills.length === 1 ? bills[0].billNumber : undefined,
+              billNumbers: bills.map(bill => bill.billNumber),
+              // Add student data for single bill notifications
+              studentName: bills.length === 1 ? bills[0].studentName : undefined,
+              studentId: bills.length === 1 ? bills[0].studentId : undefined,
+              classId: bills.length === 1 ? bills[0].classId : undefined,
+              billDate: bills.length === 1 ? bills[0].billDate : undefined,
+              dueDate: bills.length === 1 ? bills[0].dueDate : undefined,
+            })
+          )
+        );
+        notificationSuccess = results.some(Boolean);
+      } catch (error) {
+        console.warn("Push notifications failed, but bills were created successfully:", error);
+      }
+  
+      if (typeof window !== 'undefined' && typeof axios !== 'undefined') {
+        if (notificationSuccess) {
+          alert("Bills created and Pushy notifications sent to mobile devices successfully!");
+          
+        } else {
+          alert("Bills created successfully! Pushy notifications could not be sent.");
+        }
+      } else {
+        alert("Bills created successfully!");
+      }
+  
       setFormData({
         billDate: new Date().toISOString().split("T")[0],
-        duePeriod: 14,
-        dueDate: calculateDueDate(new Date().toISOString().split("T")[0], 14),
-        reference: "",
-        billNumber: `${new Date().getFullYear()}-${Math.floor(
-          Math.random() * 100
-        )}-${Math.floor(Math.random() * 100)}`,
+        dueDateTerm: "7",
+        billNumber: `${new Date().getFullYear()}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}`,
       });
       setSelectedStudentIds([]);
-      setItems([{ id: 1, description: "Tuition Fee", amount: 0 }]);
+      setItems([{ id: 1, description: "Tuition Fee", amount: "" }]);
+  
     } catch (error) {
       console.error("Error creating bills:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      setError(`Failed to create bills: ${errorMessage}`);
       alert("Failed to create bills. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const total = items.reduce((sum, item) => sum + (parseFloat(String(item.amount)) || 0), 0);
 
   if (loading) {
     return (
@@ -374,12 +531,29 @@ function CreateBill() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="alert alert-danger" role="alert">
+          <h4 className="alert-heading">Error Loading Page</h4>
+          <p>{error}</p>
+          <button 
+            className="btn btn-outline-danger" 
+            onClick={() => window.location.reload()}
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container-fluid py-4 px-4">
+    <div className="min-vh-100">
       <form onSubmit={handleSubmit}>
         <div className="row">
           {/* Left Column - Student Selection */}
-          <div className="col-md-4">
+          <div className="col-md-4 ">
             <div className="card shadow-sm h-100">
               <div className="card-header bg-white py-3">
                 <h5 className="card-title mb-0 d-flex align-items-center gap-2">
@@ -474,7 +648,14 @@ function CreateBill() {
             <div className="card shadow-sm">
               <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 className="card-title mb-0">Payment Details</h5>
-                <div className="badge bg-primary">Draft</div>
+                 <button
+                   type="button"
+                   className="btn btn-warning btn-sm d-flex align-items-center gap-2"
+                   onClick={() => setShowDescriptionModal(true)}
+                   title="Manage Description Templates"
+                 >
+                   <span>Description Templates</span>
+                 </button>
               </div>
               <div className="card-body">
                 {/* Bill Info */}
@@ -492,30 +673,26 @@ function CreateBill() {
                   <div className="col-md-3">
                     <label className="form-label">Payment Term</label>
                     <select
-                      name="duePeriod"
-                      value={formData.duePeriod}
+                      name="dueDateTerm"
+                      value={formData.dueDateTerm}
                       onChange={handleFormChange}
                       className="form-select"
                     >
-                      <option value="7">7 days</option>
-                      <option value="14">14 days</option>
-                      <option value="30">30 days</option>
+                      <option value="3">3 Days</option>
+                      <option value="7">7 Days</option>
+                      <option value="14">14 Days</option>
+                      <option value="30">30 Days</option>
                     </select>
                   </div>
                   <div className="col-md-3">
                     <label className="form-label">Due Date</label>
-                    <div className="input-group">
-                      <span className="input-group-text bg-light">
-                        <Calendar size={16} />
-                      </span>
-                      <input
-                        type="date"
-                        name="dueDate"
-                        value={formData.dueDate}
-                        className="form-control bg-light"
-                        readOnly
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      value={formatDateToDDMMYYYY(calculateDueDate(formData.billDate, formData.dueDateTerm))}
+                      className="form-control bg-light"
+                      readOnly
+                      disabled
+                    />
                   </div>
                   <div className="col-md-3">
                     <label className="form-label">Bill Number</label>
@@ -529,19 +706,7 @@ function CreateBill() {
                   </div>
                 </div>
 
-                <div className="row mb-4">
-                  <div className="col-md-6">
-                    <label className="form-label">Reference</label>
-                    <input
-                      type="text"
-                      name="reference"
-                      value={formData.reference}
-                      onChange={handleFormChange}
-                      placeholder="Enter reference"
-                      className="form-control"
-                    />
-                  </div>
-                </div>
+
 
                 {/* Items Table */}
                 <div className="table-responsive">
@@ -560,35 +725,69 @@ function CreateBill() {
                       {items.map((item, index) => (
                         <tr key={item.id}>
                           <td className="text-center">{index + 1}</td>
+                           <td>
+                             {customInputs[item.id] !== undefined ? (
+                               <div className="d-flex gap-2">
+                                 <input
+                                   type="text"
+                                   className="form-control"
+                                   value={item.description}
+                                   onChange={(e) => handleCustomInputChange(item.id, e.target.value)}
+                                   onBlur={(e) => handleCustomInputBlur(e.target.value)}
+                                   placeholder="Other"
+                                   autoFocus
+                                 />
+                                 <button
+                                   type="button"
+                                   className="btn btn-outline-secondary btn-sm"
+                                   onClick={() => {
+                                     setCustomInputs(prev => {
+                                       const newInputs = { ...prev };
+                                       delete newInputs[item.id];
+                                       return newInputs;
+                                     });
+                                   }}
+                                   title="Back to dropdown"
+                                 >
+                                   <X size={14} />
+                                 </button>
+                               </div>
+                             ) : (
+                               <select
+                                 className="form-select"
+                                 value={item.description}
+                                 onChange={(e) =>
+                                   handleInputChange(
+                                     item.id,
+                                     "description",
+                                     e.target.value
+                                   )
+                                 }
+                               >
+                                 <option value="">Select description</option>
+                                 {descriptionTemplates.map((template) => (
+                                   <option key={template.id} value={template.description}>
+                                     {template.description}
+                                   </option>
+                                 ))}
+                                 <option value="__custom__">Other</option>
+                               </select>
+                             )}
+                           </td>
                           <td>
                             <input
                               type="text"
-                              value={item.description}
-                              className="form-control"
-                              onChange={(e) =>
-                                handleInputChange(
-                                  item.id,
-                                  "description",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Enter description"
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
                               value={item.amount}
                               className="form-control text-end"
-                              onChange={(e) =>
-                                handleInputChange(
-                                  item.id,
-                                  "amount",
-                                  e.target.value
-                                )
-                              }
-                              min="0"
-                              step="0.01"
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // Allow decimal input: digits, one decimal point, and up to 2 decimal places
+                                if (value === '' || /^\d*\.?\d{0,2}$/.test(value)) {
+                                  handleInputChange(item.id, "amount", value);
+                                }
+                              }}
+                              placeholder="0.00"
+                              inputMode="decimal"
                             />
                           </td>
                           <td className="text-center">
@@ -622,7 +821,7 @@ function CreateBill() {
                         <span className="fw-bold me-4">Total Amount:</span>
                         <span className="fs-4 fw-bold text-danger">
                           RM {total.toFixed(2)}
-                         </span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -638,27 +837,132 @@ function CreateBill() {
                     className="btn btn-primary d-flex align-items-center gap-2"
                     disabled={
                       !selectedStudentIds.length ||
-                      !items.some((item) => item.amount > 0)
+                      !items.some((item) => Number(item.amount) > 0) ||
+                      isSubmitting
                     }
                   >
-                    <Save className="w-4 h-4 me-2" size={16} />
-                    Save Bill
+                    {isSubmitting ? (
+                      <>
+                        <div className="spinner-border spinner-border-sm" role="status">
+                          <span className="visually-hidden">Loading...</span>
+                        </div>
+                        Creating Bills...
+                      </>
+                    ) : (
+                      <>
+                      
+                        Create Bill
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </form>
+         </div>
+       </form>
 
-      {/* Footer */}
-      <footer className="mt-4 d-flex justify-content-between text-secondary small">
-        <span>BillCreator</span>
-        <div className="d-flex align-items-center gap-2">
-          <Receipt size={16} />
-          <span>Need help with billing?</span>
-        </div>
-      </footer>
+       {/* Template Saved Notification */}
+       {showTemplateSaved && (
+         <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1050 }}>
+           <div className="toast show" role="alert">
+             
+             <div className="toast-body">
+               New description  has been added to your template.
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* Description Template Modal */}
+       {showDescriptionModal && (
+         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+           <div className="modal-dialog modal-lg">
+             <div className="modal-content">
+               <div className="modal-header">
+                 <h5 className="modal-title">Manage Description Templates</h5>
+                 <button
+                   type="button"
+                   className="btn-close"
+                   onClick={() => {
+                     setShowDescriptionModal(false);
+                     setNewDescription("");
+                   }}
+                 ></button>
+               </div>
+               <div className="modal-body">
+                 {/* Add New Template */}
+                 <div className="mb-4">
+                   <label className="form-label">Add New Template</label>
+                   <div className="d-flex gap-2">
+                     <input
+                       type="text"
+                       className="form-control"
+                       value={newDescription}
+                       onChange={(e) => setNewDescription(e.target.value)}
+                       placeholder="Enter description"
+                       onKeyPress={(e) => {
+                         if (e.key === 'Enter') {
+                           addDescriptionTemplate();
+                         }
+                       }}
+                     />
+                     <button
+                       type="button"
+                       className="btn btn-primary"
+                       onClick={addDescriptionTemplate}
+                       disabled={!newDescription.trim()}
+                     >
+                       <Plus size={16} />
+                     </button>
+                   </div>
+                 </div>
+
+                 {/* Existing Templates */}
+                 <div>
+                   <label className="form-label">Existing Templates</label>
+                   <div className="list-group" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                     {descriptionTemplates.length === 0 ? (
+                       <div className="text-muted text-center py-3">
+                         No templates available. Add your first template above.
+                       </div>
+                     ) : (
+                       descriptionTemplates.map((template) => (
+                         <div
+                           key={template.id}
+                           className="list-group-item d-flex justify-content-between align-items-center"
+                         >
+                           <span>{template.description}</span>
+                           <button
+                             className="btn btn-sm btn-outline-danger"
+                             onClick={() => deleteDescriptionTemplate(template.id)}
+                             title="Delete template"
+                           >
+                             <X size={14} />
+                           </button>
+                         </div>
+                       ))
+                     )}
+                   </div>
+                 </div>
+               </div>
+               <div className="modal-footer">
+                 <button
+                   type="button"
+                   className="btn btn-secondary"
+                   onClick={() => {
+                     setShowDescriptionModal(false);
+                     setNewDescription("");
+                   }}
+                 >
+                   Close
+                 </button>
+               </div>
+             </div>
+           </div>
+         </div>
+       )}
+    
     </div>
   );
 }

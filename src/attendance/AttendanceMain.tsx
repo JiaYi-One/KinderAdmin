@@ -1,38 +1,296 @@
 "use client"
+import { useState, useEffect } from "react";
 import {
-  Typography, Button, Chip
+  Typography, Button, Chip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions,
+  List, ListItem, ListItemText, ListItemIcon, IconButton
 } from "@mui/material";
+
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import GroupIcon from "@mui/icons-material/Group";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import CloseIcon from "@mui/icons-material/Close";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CancelIcon from "@mui/icons-material/Cancel";
+import EventBusyIcon from "@mui/icons-material/EventBusy";
+import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import { Link } from "react-router-dom";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../firebase";
+import AttendanceDataService from "./attendanceService";
+import type { ChipProps } from '@mui/material';
 
-// Mock data
-const dashboardStats = {
-  totalStudents: 156,
-  totalClasses: 8,
-  todayAttendance: 142,
-  attendanceRate: 91.0,
-};
+interface DashboardStats {
+  totalStudents: number;
+  totalClasses: number;
+  todayAttendance: number;
+  attendanceRate: number;
+}
 
-const recentClasses = [
-  { id: 1, name: "Sunflower Class", students: 20, present: 18, grade: "KG1" },
-  { id: 2, name: "Rainbow Class", students: 22, present: 20, grade: "KG1" },
-  { id: 3, name: "Butterfly Class", students: 19, present: 19, grade: "KG2" },
-  { id: 4, name: "Star Class", students: 21, present: 17, grade: "KG2" },
-];
+interface ClassData {
+  id: string;
+  name: string;
+  students: number;
+  present: number;
+  grade: string;
+}
 
 export default function Dashboard() {
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    totalStudents: 0,
+    totalClasses: 0,
+    todayAttendance: 0,
+    attendanceRate: 0,
+  });
+  const [recentClasses, setRecentClasses] = useState<ClassData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isWeekend] = useState(false);
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [students, setStudents] = useState<{ id: string; name: string; status: string; reason?: string }[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
+
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Get current date in local timezone to avoid timezone issues
+        const now = new Date();
+        const today = now.getFullYear() + '-' + 
+                     String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(now.getDate()).padStart(2, '0');
+        
+        // Check if today is weekend
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+        const weekend = dayOfWeek === 0 || dayOfWeek === 6;
+        
+        console.log('Today date (local):', today, 'Day of week:', dayOfWeek, 'Is weekend:', weekend);
+        
+        // Use today's date for attendance fetching
+        const displayDate = today;
+        console.log('Display date being used for attendance:', displayDate);
+        
+        // setIsWeekend(weekend); // This state is removed
+        
+        if (weekend) {
+          // Don't fetch any attendance data on weekends
+          setDashboardStats({
+            totalStudents: 0,
+            totalClasses: 0,
+            todayAttendance: 0,
+            attendanceRate: 0,
+          });
+          setRecentClasses([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch all classes from the classes collection (same as TakeAttendance)
+        const classesSnapshot = await getDocs(collection(db, "classes"));
+        const classIds = classesSnapshot.docs.map(doc => doc.id);
+        
+        console.log('Found classes:', classIds);
+
+        // Fetch students count
+        const studentsSnapshot = await getDocs(collection(db, "students"));
+        const totalStudents = studentsSnapshot.size;
+
+        // Fetch attendance for all classes (using displayDate instead of today)
+        let totalPresent = 0;
+        let totalAbsent = 0;
+        let totalLeave = 0;
+        const classData: ClassData[] = [];
+
+        // Clear cache to ensure fresh data
+        AttendanceDataService.clearCache();
+        
+        // Use Promise.all for parallel API calls instead of sequential
+        const attendancePromises = classIds.map(async (classId) => {
+          try {
+            const attendanceResult = await AttendanceDataService.fetchClassAttendance(classId, displayDate);
+            
+            // Get class details from students collection
+            const classStudentsSnapshot = await getDocs(
+              query(collection(db, "students"), where("class_id", "==", classId))
+            );
+            
+            const classStudents = classStudentsSnapshot.docs;
+            const grade = classStudents.length > 0 ? classStudents[0].data()?.grade || "N/A" : "N/A";
+            
+            return {
+              id: classId,
+              name: classId, // Using classId as name for now
+              students: classStudents.length,
+              present: attendanceResult.present,
+              grade: grade,
+              absent: attendanceResult.absent,
+              leave: attendanceResult.leave
+            };
+          } catch (error) {
+            console.error(`Error fetching attendance for class ${classId}:`, error);
+            // Return class with zero attendance if there's an error
+            return {
+              id: classId,
+              name: classId,
+              students: 0,
+              present: 0,
+              grade: "N/A",
+              absent: 0,
+              leave: 0
+            };
+          }
+        });
+
+        // Wait for all API calls to complete in parallel
+        const results = await Promise.all(attendancePromises);
+        
+        // Process results
+        results.forEach(result => {
+          classData.push({
+            id: result.id,
+            name: result.name,
+            students: result.students,
+            present: result.present,
+            grade: result.grade
+          });
+          
+          totalPresent += result.present;
+          totalAbsent += result.absent;
+          totalLeave += result.leave;
+        });
+
+        const totalAttendance = totalPresent + totalAbsent + totalLeave;
+        const attendanceRate = totalAttendance > 0 ? (totalPresent / totalAttendance) * 100 : 0;
+
+        setDashboardStats({
+          totalStudents,
+          totalClasses: classIds.length,
+          todayAttendance: totalPresent,
+          attendanceRate: Math.round(attendanceRate * 100) / 100
+        });
+
+        setRecentClasses(classData);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        setError('Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  // Handle class click to show student details
+  const handleClassClick = async (classId: string) => {
+    setSelectedClass(classId);
+    setLoadingStudents(true);
+    
+    try {
+      // Get today's date or last Friday if weekend (using local timezone)
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      let displayDate = today.getFullYear() + '-' + 
+                       String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                       String(today.getDate()).padStart(2, '0');
+      
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        const lastFriday = new Date(today);
+        const daysToSubtract = dayOfWeek === 0 ? 2 : 1; // Sunday: go back 2 days, Saturday: go back 1 day
+        lastFriday.setDate(today.getDate() - daysToSubtract);
+        displayDate = lastFriday.getFullYear() + '-' + 
+                     String(lastFriday.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(lastFriday.getDate()).padStart(2, '0');
+      }
+      
+      const result = await AttendanceDataService.fetchClassAttendance(classId, displayDate);
+      setStudents(result.students);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      setStudents([]);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setSelectedClass(null);
+    setStudents([]);
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'present': return <CheckCircleIcon color="success" />;
+      case 'absent': return <CancelIcon color="error" />;
+      case 'on leave': return <EventBusyIcon color="info" />;
+      default: return <GroupIcon />;
+    }
+  };
+
+  const getStatusColor = (status: string): ChipProps['color'] => {
+    switch (status) {
+      case 'present': return 'success';
+      case 'absent': return 'error';
+      case 'on leave': return 'info';
+      default: return 'default';
+    }
+  };
+
+  // Week navigation logic for Manage Student Attendance
+
+
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <CircularProgress />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <Typography color="error">{error}</Typography>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ minHeight: "100vh" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5f5f5" }}>
       <div style={{ width: "90%", maxWidth: "none", margin: "0 auto", padding: "24px" }}>
-        {/* Header */}
-        <div style={{ marginBottom: "32px" }}>
-          <Typography variant="h3" fontWeight="bold" color="text.primary" style={{ marginBottom: "8px" }}>
-            Sunshine Kindergarten
-          </Typography>
-          <Typography color="text.secondary">Attendance Management System</Typography>
+        <div style={{ 
+          background: "#fff", 
+          borderRadius: "12px", 
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+          padding: "32px",
+          minHeight: "calc(100vh - 48px)"
+        }}>
+          {/* Header */}
+          <div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <Typography variant="h5" fontWeight="bold" color="text.primary" >
+            Attendance Management System
+            </Typography>
+            <Typography color="text.secondary"></Typography>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <Typography variant="h6" fontWeight="bold" color="primary">
+              {new Date().toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {isWeekend ? "Weekend - No School" : "School Day"}
+            </Typography>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -74,13 +332,13 @@ export default function Dashboard() {
             padding: "16px"
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-              <Typography variant="subtitle2">Today's Attendance</Typography>
-              <CalendarMonthIcon color="action" />
-            </div>
-            <Typography variant="h5" fontWeight="bold">{dashboardStats.todayAttendance}</Typography>
-            <Typography variant="caption" color="text.secondary">
-              out of {dashboardStats.totalStudents} students
-            </Typography>
+                          <Typography variant="subtitle2">{isWeekend ? "Weekend" : "Today's"} Attendance</Typography>
+            <CalendarMonthIcon color="action" />
+          </div>
+          <Typography variant="h5" fontWeight="bold">{isWeekend ? "--" : dashboardStats.todayAttendance}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {isWeekend ? "No school on weekends" : `out of ${dashboardStats.totalStudents} students`}
+          </Typography>
           </div>
           <div style={{ 
             flex: "1 1 200px", 
@@ -96,7 +354,7 @@ export default function Dashboard() {
             </div>
             <Typography variant="h5" fontWeight="bold">{dashboardStats.attendanceRate}%</Typography>
             <Typography variant="caption" color="success.main">
-              +2.1% from yesterday
+              Today's overall rate
             </Typography>
           </div>
         </div>
@@ -126,7 +384,7 @@ export default function Dashboard() {
                 <Typography variant="h6">Take Attendance</Typography>
               </div>
               <Typography variant="body2" color="text.secondary">
-                Mark attendance with pre-notified absences
+                Mark attendance 
               </Typography>
             </Link>
           </div>
@@ -174,13 +432,40 @@ export default function Dashboard() {
             onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.23)"}
             onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)"}
           >
-            <Link to="/students" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link to="/attendance/manageStudAttendance" style={{ textDecoration: "none", color: "inherit" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                <GroupIcon style={{ color: "#9c27b0" }} />
-                <Typography variant="h6">Manage Students</Typography>
+                <ManageAccountsIcon style={{ color: "#9c27b0" }} />
+                <Typography variant="h6">View Student Attendance</Typography>
               </div>
               <Typography variant="body2" color="text.secondary">
-                View and manage student profiles
+                View student attendance by class and week
+              </Typography>
+            </Link>
+          </div>
+          <div 
+            style={{ 
+              flex: "1 1 300px",
+              minWidth: "300px",
+              height: "100px", 
+              textAlign: "left", 
+              textDecoration: "none",
+              cursor: "pointer",
+              boxShadow: "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)",
+              borderRadius: "4px",
+              backgroundColor: "white",
+              padding: "16px",
+              transition: "box-shadow 0.3s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 6px 12px rgba(0,0,0,0.16), 0 6px 12px rgba(0,0,0,0.23)"}
+            onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)"}
+          >
+            <Link to="/attendance/stud_onleave" style={{ textDecoration: "none", color: "inherit" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                <EventBusyIcon style={{ color: "#ff9800" }} />
+                <Typography variant="h6">Students On Leave</Typography>
+              </div>
+              <Typography variant="body2" color="text.secondary">
+                View and manage students who are currently on leave
               </Typography>
             </Link>
           </div>
@@ -194,57 +479,129 @@ export default function Dashboard() {
           padding: "16px"
         }}>
           <div style={{ marginBottom: "16px" }}>
-            <Typography variant="h6">Today's Class Attendance</Typography>
-            <Typography variant="body2" color="text.secondary">Overview of attendance for all classes</Typography>
+            <Typography variant="h6">{isWeekend ? "Weekend" : "Today's"} Class Attendance</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {isWeekend ? "No classes on weekends" : "Overview of attendance for all classes"}
+            </Typography>
           </div>
           <div>
-            {recentClasses.map((classItem) => (
-              <div
-                key={classItem.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "16px",
-                  marginBottom: "16px",
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "8px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)"
-                }}
-              >
-                <div>
-                  <Typography fontWeight="bold">{classItem.name}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Grade: {classItem.grade}
-                  </Typography>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                  <div style={{ textAlign: "right" }}>
-                    <Typography fontWeight="bold">
-                      {classItem.present}/{classItem.students}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Present/Total
-                    </Typography>
+            {isWeekend ? (
+              <Typography variant="body2" color="text.secondary" align="center" style={{ padding: "20px" }}>
+                School is closed on weekends. No attendance data available.
+              </Typography>
+            ) : recentClasses.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" align="center" style={{ padding: "20px" }}>
+                No class data available
+              </Typography>
+            ) : (
+              recentClasses.map((classItem) => (
+                <div
+                  key={classItem.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "16px",
+                    marginBottom: "16px",
+                    border: "1px solid #e0e0e0",
+                    borderRadius: "8px",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)"
+                  }}
+                >
+                  <div>
+                    <Typography fontWeight="bold">{classItem.name}</Typography>
+                   
                   </div>
-                  <Chip
-                    label={`${Math.round((classItem.present / classItem.students) * 100)}%`}
-                    color={classItem.present === classItem.students ? "success" : "default"}
-                  />
-                  <Button
-                    component={Link}
-                    to={`/attendance/${classItem.id}`}
-                    variant="outlined"
-                    size="small"
-                  >
-                    View Details
-                  </Button>
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <Typography fontWeight="bold">
+                        {classItem.present}/{classItem.students}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Present/Total
+                      </Typography>
+                    </div>
+                    <Chip
+                      label={`${classItem.students > 0 ? Math.round((classItem.present / classItem.students) * 100) : 0}%`}
+                      color={classItem.present === classItem.students ? "success" : "default"}
+                    />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleClassClick(classItem.id)}
+                    >
+                      View Details
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
+        </div>
       </div>
+
+      {/* Student Details Dialog */}
+      <Dialog open={Boolean(selectedClass)} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              {selectedClass} - Student Attendance ({isWeekend ? "Last Friday" : "Today"})
+            </Typography>
+            <IconButton onClick={handleCloseDialog}>
+              <CloseIcon />
+            </IconButton>
+          </div>
+        </DialogTitle>
+        <DialogContent>
+          {loadingStudents ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Typography variant="body1" color="text.secondary">
+                Loading students...
+              </Typography>
+            </div>
+          ) : (
+            <List>
+              {students.map((student) => (
+                <ListItem key={student.id} divider>
+                  <ListItemIcon>
+                    {getStatusIcon(student.status)}
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={student.name}
+                    secondary={
+                      <div>
+                        <div>Student ID: {student.id}</div>
+                        {(student.status === 'absent' || student.status === 'on leave') && student.reason && (
+                          <div style={{ marginTop: 4, fontStyle: 'italic', color: 'text.secondary' }}>
+                            Reason: {student.reason}
+                          </div>
+                        )}
+                      </div>
+                    }
+                  />
+                  <Chip 
+                    label={student.status.toUpperCase()} 
+                    color={getStatusColor(student.status)}
+                    size="small"
+                  />
+                </ListItem>
+              ))}
+              {students.length === 0 && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                  No students found for this class on the selected date.
+                </Typography>
+              )}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manage Student Attendance Dialog */}
+      {/* This dialog is removed as per the edit hint */}
     </div>
   );
 }

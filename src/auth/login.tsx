@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAuth, signInWithEmailAndPassword, AuthError } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, AuthError } from 'firebase/auth';
 import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
 import "bootstrap/dist/css/bootstrap.min.css";
 
@@ -9,6 +9,11 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -68,7 +73,42 @@ function Login() {
     }
   };
 
+  const openResetModal = () => {
+    setResetEmail(email || '');
+    setResetError('');
+    setResetSuccess('');
+    setShowReset(true);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    setResetSuccess('');
+    if (!resetEmail) {
+      setResetError('Please enter your email');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      const auth = getAuth();
+      await sendPasswordResetEmail(auth, resetEmail);
+      setResetSuccess('Password reset email sent. Please check your inbox.');
+    } catch (err) {
+      const error = err as AuthError;
+      if (error.code === 'auth/user-not-found') {
+        setResetError('No account found with this email');
+      } else if (error.code === 'auth/invalid-email') {
+        setResetError('Please enter a valid email address');
+      } else {
+        setResetError(error.message || 'Failed to send reset email');
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
+    <>
     <div className="min-vh-100 d-flex align-items-center justify-content-center bg-light">
       <div className="container">
         <div className="row justify-content-center">
@@ -126,12 +166,62 @@ function Login() {
                     )}
                   </button>
                 </form>
+                <div className="mt-3 text-center">
+                  <button
+                    type="button"
+                    className="btn btn-link p-0"
+                    onClick={openResetModal}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+    {showReset && (
+      <div className="modal fade show" style={{ display: 'block', backgroundColor: 'rgba(0, 0, 0, 0.5)' }} tabIndex={-1}>
+        <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Reset Password</h5>
+              <button type="button" className="btn-close" onClick={() => setShowReset(false)}></button>
+            </div>
+            <form onSubmit={handleResetPassword}>
+              <div className="modal-body">
+                {resetError && (
+                  <div className="alert alert-danger" role="alert">{resetError}</div>
+                )}
+                {resetSuccess && (
+                  <div className="alert alert-success" role="alert">{resetSuccess}</div>
+                )}
+                <div className="mb-3">
+                  <label htmlFor="resetEmail" className="form-label">Email</label>
+                  <input
+                    id="resetEmail"
+                    type="email"
+                    className="form-control"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="Enter your account email"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowReset(false)} disabled={resetLoading}>Close</button>
+                <button type="submit" className="btn btn-primary" disabled={resetLoading}>
+                  {resetLoading ? 'Sending...' : 'Send Reset Email'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
